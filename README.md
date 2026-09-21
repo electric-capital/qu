@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo.svg" alt="Quest logo" width="120">
+</p>
+
 # Quest
 
 A self-hosted AI agent workbench: a ChatGPT-style web app where people connect the services they
