@@ -60,7 +60,7 @@ Telegram, or Twitter message, creating a calendar invite, uploading to Drive, ed
 spreadsheet, saving a memory, editing a skill -- goes through an
 [action request](docs/architecture/action-requests.md): the agent proposes the exact operation,
 the UI renders a human-readable preview card (with diffs for edits), and the agent blocks until
-the user clicks Approve, Revise, or Deny. Pending approvals survive restarts and page reloads.
+the user clicks Approve, Revise, or Stop. Pending approvals survive restarts and page reloads.
 
 ### Built for less-technical users
 
