@@ -63,7 +63,15 @@ The resolvers deliberately know nothing about users: schedulers, migrations, the
 | `require_owned_project(user_id, project_id)` | `get_project` lookup; 404 `not_found` otherwise |
 | `resolve_owned_project_dir(user_id, project_id)` | The above plus `get_project_dir`; returns `(project, path)` |
 
-Routes that serve conversation- or project-scoped files go through these accessors rather than calling the store and the resolver separately: the file browser routes (`chat/file_routes.py`), the conversation routes (`chat/routes/conversations.py`), the project-table routes (`chat/project_db_routes.py`), the Gmail Simple URL-lookup routes, and the Gmail draft route's workspace attachments (`api/gmail/draft_endpoints.py` -- the body-supplied `conversation_id` is ownership-checked before any attachment is read). Tests: `tests/test_storage_path_resolvers.py` (canonical-id, containment and symlink cases, plus user-A-cannot-target-user-B route regressions) and `tests/test_gmail_url_cache_security.py`.
+Routes that serve conversation- or project-scoped files go through these accessors rather than calling the store and the resolver separately:
+
+- the file browser routes (`chat/file_routes.py`),
+- the conversation routes (`chat/routes/conversations.py`),
+- the project-table routes (`chat/project_db_routes.py`),
+- the Gmail Simple URL-lookup routes, and
+- the Gmail draft route's workspace attachments (`api/gmail/draft_endpoints.py` -- the body-supplied `conversation_id` is ownership-checked before any attachment is read).
+
+Tests: `tests/test_storage_path_resolvers.py` (canonical-id, containment and symlink cases, plus user-A-cannot-target-user-B route regressions) and `tests/test_gmail_url_cache_security.py`.
 
 ## Design Decisions
 

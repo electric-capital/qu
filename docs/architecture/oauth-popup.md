@@ -34,7 +34,11 @@ The popup flag is stored alongside the CSRF nonce in the signed, session-bound `
 
 ### Telegram
 
-Telegram (the `plugins/telegram` plugin) has no OAuth provider: the popup is a single plugin-served page that walks the user through Telegram's own login (phone number, the code sent to their Telegram app, optional cloud password) by calling the plugin's JSON endpoints with `fetch`. Nothing about the flow lives in a cookie: the in-flight login (phone, `phone_code_hash`, the not-yet-authorized Telethon session string, stage, expiry, attempts) is parked server-side in the user's `user_service_credentials` row under `oauth_blob.pending`, encrypted at rest, and only replaced by the authorized `session` on success. There is no popup flag to carry through -- the page always posts `oauth_callback_success` to `window.opener` when one exists and redirects home otherwise (the Twilio plugin's pattern).
+Telegram (the `plugins/telegram` plugin) has no OAuth provider: the popup is a single plugin-served page that walks the user through Telegram's own login (phone number, the code sent to their Telegram app, optional cloud password) by calling the plugin's JSON endpoints with `fetch`.
+
+Nothing about the flow lives in a cookie: the in-flight login (phone, `phone_code_hash`, the not-yet-authorized Telethon session string, stage, expiry, attempts) is parked server-side in the user's `user_service_credentials` row under `oauth_blob.pending`, encrypted at rest, and only replaced by the authorized `session` on success.
+
+There is no popup flag to carry through -- the page always posts `oauth_callback_success` to `window.opener` when one exists and redirects home otherwise (the Twilio plugin's pattern).
 
 **Flow**: `?popup=1` on `/auth/telegram` --> page `POST`s `/auth/telegram/send-code` --> `POST /auth/telegram/verify` (answers `needs_2fa: true` for accounts with a cloud password) --> optional `POST /auth/telegram/2fa` --> `postMessage` + `window.close()`
 

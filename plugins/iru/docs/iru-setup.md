@@ -18,7 +18,9 @@ The connector row appears in every user's Settings > Data Connections once the U
 
 ## User: API token
 
-1. In the Iru web app (as an Iru admin, or ask one): Settings > Access > **Add API Token**. Give it a name, copy the token (it is shown once), then open its **Permissions** tab and grant the read permissions the user needs. Everything the plugin calls is a GET; a useful read-only set is Device list / Device ID / Device details / Device status / Device apps / Device activity / Device library items / Device commands / Device parameters, Blueprints (list, get, list library items), Library item status, Users, Tags, Prism (all categories + count), Threat details, Vulnerabilities, Audit events, ADE devices, and Licensing. Do **not** grant the device *secrets* permissions or any device-action permission: the plugin never calls them, and a token that cannot read secrets cannot leak them.
+1. In the Iru web app (as an Iru admin, or ask one): Settings > Access > **Add API Token**. Give it a name, copy the token (it is shown once), then open its **Permissions** tab and grant the read permissions the user needs.
+   - Everything the plugin calls is a GET; a useful read-only set is Device list / Device ID / Device details / Device status / Device apps / Device activity / Device library items / Device commands / Device parameters, Blueprints (list, get, list library items), Library item status, Users, Tags, Prism (all categories + count), Threat details, Vulnerabilities, Audit events, ADE devices, and Licensing.
+   - Do **not** grant the device *secrets* permissions or any device-action permission: the plugin never calls them, and a token that cannot read secrets cannot leak them.
 2. In Quest: Settings > Data Connections > "+ Add Connection" > **Iru (Kandji)**, paste the token, save. The token is stored encrypted for that user only.
 3. Ask Quest "Is Iru connected?" -- `iru_get_tenant_info` confirms the token is accepted and shows the licensing counts.
 

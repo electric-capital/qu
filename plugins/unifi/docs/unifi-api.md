@@ -33,7 +33,10 @@ Three things shape the plugin:
 Routes are the plugin's router (`plugins/unifi/connect.py`), mounted by `mount_plugin_oauth_routers()`; every route is session-cookie authed (no API-key auth, so the LLM's `curl_proxy_*` tools cannot reach them).
 
 1. Data Connections "Connect" opens `GET /auth/unifi?popup=1` -- a self-contained page showing the controller host, the masked stored keys with the application version recorded at verification time, a Network field, a Protect field, per-key "remove" checkboxes, "Test & save", and "Disconnect".
-2. `POST /auth/unifi/keys` `{"network_api_key"?, "protect_api_key"?}` -- a missing/`null` field keeps the stored key, `""` removes it, anything else is trimmed and verified (`GET .../network/integration/v1/info` / `GET .../protect/integration/v1/meta/info`) before the row is written. A rejected key returns 400 `invalid_network_api_key` / `invalid_protect_api_key` (nothing stored); an unreachable controller returns 502 with the `UnifiError.code`; removing the last key returns 400 `no_keys`. The blob becomes `{network_api_key?, protect_api_key?, network_version?, protect_version?, verified_at}` and `invalidate_user_sessions()` refreshes the system prompt. The page posts `oauth_callback_success` to the opener (the same message the OAuth popups send) and closes.
+2. `POST /auth/unifi/keys` `{"network_api_key"?, "protect_api_key"?}` -- a missing/`null` field keeps the stored key, `""` removes it, anything else is trimmed and verified (`GET .../network/integration/v1/info` / `GET .../protect/integration/v1/meta/info`) before the row is written.
+   - A rejected key returns 400 `invalid_network_api_key` / `invalid_protect_api_key` (nothing stored); an unreachable controller returns 502 with the `UnifiError.code`; removing the last key returns 400 `no_keys`.
+   - The blob becomes `{network_api_key?, protect_api_key?, network_version?, protect_version?, verified_at}` and `invalidate_user_sessions()` refreshes the system prompt.
+   - The page posts `oauth_callback_success` to the opener (the same message the OAuth popups send) and closes.
 3. `POST /auth/unifi/disconnect` -- deletes the row (the generic oauth-kind connector row has no disconnect button, so the popup hosts one).
 
 `unifi_connected` is true when either key is present.
@@ -56,7 +59,9 @@ Protect (need the Protect key):
 
 - `unifi_list_cameras()` -- `camera_view` rows (state, model, last seen, mic/recording/HDR, truthy feature flags, smart-detect object types) plus connected/disconnected counts.
 - `unifi_get_camera(camera)` -- by id or name; full object under `detail`.
-- `unifi_get_camera_snapshot(camera, high_quality?, path?)` -- refuses DISCONNECTED cameras, fetches `GET .../cameras/{id}/snapshot?highQuality=`, writes the JPEG to the workspace (default `unifi-snapshots/<camera>-<UTC timestamp>.jpg`; `path` semantics match the other plugins' save tools, `.jpg` appended when missing, traversal rejected), publishes `file_list_changed`, and attaches the image to the tool result via `provider.upload_file` + `make_file_part` (`attached_to_response` false when the provider cannot, e.g. an attach failure -- the file is kept either way). The result's `message` tells the model to render `![name](path)` inline (see the workspace-image convention in [frontend.md](../../../docs/architecture/frontend.md)). Requires a conversation workspace.
+- `unifi_get_camera_snapshot(camera, high_quality?, path?)` -- refuses DISCONNECTED cameras, fetches `GET .../cameras/{id}/snapshot?highQuality=`, writes the JPEG to the workspace (default `unifi-snapshots/<camera>-<UTC timestamp>.jpg`; `path` semantics match the other plugins' save tools, `.jpg` appended when missing, traversal rejected), publishes `file_list_changed`, and attaches the image to the tool result via `provider.upload_file` + `make_file_part` (`attached_to_response` false when the provider cannot, e.g. an attach failure -- the file is kept either way).
+  - The result's `message` tells the model to render `![name](path)` inline (see the workspace-image convention in [frontend.md](../../../docs/architecture/frontend.md)).
+  - Requires a conversation workspace.
 - `unifi_list_protect_devices(kind)` -- raw objects from `/nvrs`, `/sensors`, `/lights`, `/chimes`, `/viewers`, `/liveviews`.
 
 Script bridge (`SCRIPT_TOOL_ALLOWLIST`): the controller-info, site, status, device, client, and camera-list tools; the snapshot tool (needs a workspace) and the raw Protect dump are tool-only.

@@ -4,7 +4,11 @@ This document describes how Quest reads US Securities and Exchange Commission ED
 
 ## Overview
 
-SEC EDGAR reads use the `authed_get` tool to make GET requests directly to the public SEC EDGAR data API at `https://data.sec.gov/...`, plus the two static ticker→CIK map files on `https://www.sec.gov/files/...`. The SEC EDGAR data API is free, public, and requires **no authentication**, so like the Federal Register integration it has no credentials, no connection step, and no Settings entry. The `authed_get` handler in `chat/gemini_api/authed_get.py` matches the hostname, runs the request path through an `allowed_endpoints` regex allow-list, and injects no credentials (a no-op auth injector). SEC's fair-access policy does require a descriptive `User-Agent` on every request (it returns HTTP 403 without one), so each registry entry supplies one via `default_headers`. The backend documentation is carried in the ungated `system:sec_edgar` system skill rather than always-on prompt text. The integration is modeled closely on the [Federal Register API](federal-register-api.md).
+SEC EDGAR reads use the `authed_get` tool to make GET requests directly to the public SEC EDGAR data API at `https://data.sec.gov/...`, plus the two static ticker→CIK map files on `https://www.sec.gov/files/...`. The SEC EDGAR data API is free, public, and requires **no authentication**, so like the Federal Register integration it has no credentials, no connection step, and no Settings entry.
+
+The `authed_get` handler in `chat/gemini_api/authed_get.py` matches the hostname, runs the request path through an `allowed_endpoints` regex allow-list, and injects no credentials (a no-op auth injector). SEC's fair-access policy does require a descriptive `User-Agent` on every request (it returns HTTP 403 without one), so each registry entry supplies one via `default_headers`.
+
+The backend documentation is carried in the ungated `system:sec_edgar` system skill rather than always-on prompt text. The integration is modeled closely on the [Federal Register API](federal-register-api.md).
 
 ## Key Files
 
@@ -53,7 +57,11 @@ The rest of `www.sec.gov` (the human-facing site, `/cgi-bin/browse-edgar`, other
 
 ### Ticker → CIK Resolution Workflow
 
-Every `data.sec.gov` path requires a CIK (Central Index Key), not a ticker. To let the agent resolve a stock ticker to a CIK without leaving `authed_get`, the two SEC ticker→CIK map files on `www.sec.gov` are narrowly allow-listed. The map files are large (thousands of entries), so the skill instructions direct the model to fetch them with `output_file` (written under the hidden `.responses/` workspace subdirectory), then read/search the file via the receipt's `.responses/...` path and **zero-pad** the resulting integer `cik_str` to 10 digits to build the `data.sec.gov` URL. See `api/sec_edgar.py` (`get_instructions()`) for the file shapes and the workflow detail. If the CIK is already known, the map fetch is skipped.
+Every `data.sec.gov` path requires a CIK (Central Index Key), not a ticker. To let the agent resolve a stock ticker to a CIK without leaving `authed_get`, the two SEC ticker→CIK map files on `www.sec.gov` are narrowly allow-listed.
+
+The map files are large (thousands of entries), so the skill instructions direct the model to fetch them with `output_file` (written under the hidden `.responses/` workspace subdirectory), then read/search the file via the receipt's `.responses/...` path and **zero-pad** the resulting integer `cik_str` to 10 digits to build the `data.sec.gov` URL.
+
+See `api/sec_edgar.py` (`get_instructions()`) for the file shapes and the workflow detail. If the CIK is already known, the map fetch is skipped.
 
 ### CIK Zero-Padding
 

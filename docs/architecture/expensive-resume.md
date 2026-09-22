@@ -2,7 +2,11 @@
 
 ## Overview
 
-Resuming a long-idle, long-context conversation on a costly model re-reads the entire history at uncached input rates (the provider prompt cache expires after a short inactivity window), so a single resumed message can cost dollars. When a **standalone** (non-project) conversation matches a configured rule (model family + minimum context tokens + minimum idle time), the web UI blocks the composer behind a warning card that offers cheaper alternatives (Duplicate Workspace, Create Project from Chat) and only unlocks after an explicit "Continue anyway" acknowledgement. The server independently rejects unacknowledged sends, so the block cannot be bypassed by a stale tab. Project conversations never warn -- `check_expensive_resume` returns `None` when `meta.project_id` is set.
+Resuming a long-idle, long-context conversation on a costly model re-reads the entire history at uncached input rates (the provider prompt cache expires after a short inactivity window), so a single resumed message can cost dollars.
+
+When a **standalone** (non-project) conversation matches a configured rule (model family + minimum context tokens + minimum idle time), the web UI blocks the composer behind a warning card that offers cheaper alternatives (Duplicate Workspace, Create Project from Chat) and only unlocks after an explicit "Continue anyway" acknowledgement.
+
+The server independently rejects unacknowledged sends, so the block cannot be bypassed by a stale tab. Project conversations never warn -- `check_expensive_resume` returns `None` when `meta.project_id` is set.
 
 ## Key Files
 

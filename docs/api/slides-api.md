@@ -4,7 +4,9 @@ This document describes how Quest accesses Google Slides content for reading pre
 
 ## Overview
 
-Slides read operations use the `authed_get` tool to make authenticated GET requests directly to the Google Slides API v1 at `https://slides.googleapis.com/v1/...`. The `authed_get` handler in `chat/gemini_api/authed_get.py` matches the hostname, loads the user's Google Services OAuth credentials, and injects a Bearer token into each request. An `allowed_endpoints` validation mechanism restricts which API paths can be called, preventing access to arbitrary Slides API endpoints. Listing Google Slides presentations uses the Google Drive API via `authed_get` with a `mimeType='application/vnd.google-apps.presentation'` filter (Drive is already registered in `_SERVICE_REGISTRY`). Access is read-only.
+Slides read operations use the `authed_get` tool to make authenticated GET requests directly to the Google Slides API v1 at `https://slides.googleapis.com/v1/...`. The `authed_get` handler in `chat/gemini_api/authed_get.py` matches the hostname, loads the user's Google Services OAuth credentials, and injects a Bearer token into each request. An `allowed_endpoints` validation mechanism restricts which API paths can be called, preventing access to arbitrary Slides API endpoints.
+
+Listing Google Slides presentations uses the Google Drive API via `authed_get` with a `mimeType='application/vnd.google-apps.presentation'` filter (Drive is already registered in `_SERVICE_REGISTRY`). Access is read-only.
 
 ## Authentication
 

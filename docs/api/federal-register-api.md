@@ -4,7 +4,11 @@ This document describes how Quest reads US Federal Register data (documents, age
 
 ## Overview
 
-Federal Register reads use the `authed_get` tool to make GET requests directly to the public Federal Register API v1 at `https://www.federalregister.gov/api/v1/...`. The Federal Register API is a free, public US government API that requires **no authentication**, so unlike every other `authed_get` backend it has no credentials, no connection step, and no Settings entry. The `authed_get` handler in `chat/gemini_api/authed_get.py` matches the hostname, applies a `path_prefix` scope so the proxy is confined to `/api/v1`, runs the request path through an `allowed_endpoints` regex allow-list, and injects nothing (a no-op auth injector). The backend documentation is carried in the ungated `system:federal_register` system skill rather than always-on prompt text.
+Federal Register reads use the `authed_get` tool to make GET requests directly to the public Federal Register API v1 at `https://www.federalregister.gov/api/v1/...`. The Federal Register API is a free, public US government API that requires **no authentication**, so unlike every other `authed_get` backend it has no credentials, no connection step, and no Settings entry.
+
+The `authed_get` handler in `chat/gemini_api/authed_get.py` matches the hostname, applies a `path_prefix` scope so the proxy is confined to `/api/v1`, runs the request path through an `allowed_endpoints` regex allow-list, and injects nothing (a no-op auth injector).
+
+The backend documentation is carried in the ungated `system:federal_register` system skill rather than always-on prompt text.
 
 ## Key Files
 
@@ -30,7 +34,11 @@ See [Authenticated External API Requests](../architecture/gemini-api.md#authenti
 
 ## Federal Register Read Access (via `authed_get`)
 
-Federal Register reads use `authed_get` with the full API URL. The `_SERVICE_REGISTRY` entry in `chat/gemini_api/authed_get.py` defines the allowed endpoint patterns via regex validation -- requests to non-matching paths are rejected. The allow-list covers read-only paths only: documents search (`.json`/`.csv`), single and comma-joined multi-document fetches, document facets, public-inspection documents (search, current, single), agencies (list and single by slug or numeric id), and suggested searches (list and single). The `/images/{identifier}` path is intentionally not allow-listed. See that file for the full pattern list and `api/federal_register.py` (`get_instructions()`) for the LLM-facing documentation (base URL, key paths, query parameters, and example invocations).
+Federal Register reads use `authed_get` with the full API URL. The `_SERVICE_REGISTRY` entry in `chat/gemini_api/authed_get.py` defines the allowed endpoint patterns via regex validation -- requests to non-matching paths are rejected.
+
+The allow-list covers read-only paths only: documents search (`.json`/`.csv`), single and comma-joined multi-document fetches, document facets, public-inspection documents (search, current, single), agencies (list and single by slug or numeric id), and suggested searches (list and single). The `/images/{identifier}` path is intentionally not allow-listed.
+
+See that file for the full pattern list and `api/federal_register.py` (`get_instructions()`) for the LLM-facing documentation (base URL, key paths, query parameters, and example invocations).
 
 Documents search results and the full `/agencies` list frequently exceed the 3 KB `authed_get` size gate. The skill instructions direct the model to trim payloads with `fields[]` (URL-encoded as `fields%5B%5D`) plus a small `per_page`, and to pass `output_file` for the large agencies list or CSV exports so the body is written under the hidden `.responses/` workspace subdirectory (read back via the receipt's `.responses/...` path) instead of returned inline. See [Large Response Protection](../architecture/gemini-api.md#large-response-protection).
 

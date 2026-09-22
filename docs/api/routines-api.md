@@ -33,6 +33,10 @@ These endpoints back the Skills section of `RoutineSettingsModal` and persist to
 
 ## Optimistic Concurrency
 
-Routine responses include `updated_at` (ISO string, stamped on create and on every value-changing update). Clients pass that token back as `expected_updated_at` on `PUT` to guard against concurrent overwrites. When the supplied token does not match the row's current `updated_at`, the endpoint short-circuits with `409` and a flat JSON body `{"error": "stale_update", "message": ..., "current": <fresh routine row>}` -- returned via `JSONResponse` rather than `HTTPException` so the body has no FastAPI `detail` wrapper. Other error paths still use `HTTPException`. Omitting `expected_updated_at` skips the check (used by the "overwrite anyway" path after the user resolves a conflict, and as a back-compat path for legacy rows). See [`StaleRoutineError`](../../db/routine_store.py) for the underlying exception and [Routines Architecture](../architecture/routines.md) for the end-to-end behavior, including the no-op short-circuit that avoids spurious token invalidation.
+Routine responses include `updated_at` (ISO string, stamped on create and on every value-changing update). Clients pass that token back as `expected_updated_at` on `PUT` to guard against concurrent overwrites.
+
+When the supplied token does not match the row's current `updated_at`, the endpoint short-circuits with `409` and a flat JSON body `{"error": "stale_update", "message": ..., "current": <fresh routine row>}` -- returned via `JSONResponse` rather than `HTTPException` so the body has no FastAPI `detail` wrapper. Other error paths still use `HTTPException`.
+
+Omitting `expected_updated_at` skips the check (used by the "overwrite anyway" path after the user resolves a conflict, and as a back-compat path for legacy rows). See [`StaleRoutineError`](../../db/routine_store.py) for the underlying exception and [Routines Architecture](../architecture/routines.md) for the end-to-end behavior, including the no-op short-circuit that avoids spurious token invalidation.
 
 ---

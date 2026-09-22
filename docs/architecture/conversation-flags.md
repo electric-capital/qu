@@ -2,7 +2,11 @@
 
 ## Overview
 
-Per-conversation flags are a small, extensible registry of opt-in behaviors set at the *start* of a conversation (on the first user message) and persisted onto the `Conversation` row as a JSON array of enabled flag names. There are two activation paths, both honored only on the first web message and merged into one set: a **composer Flags popover** (checkboxes that ride out-of-band on the `send_message` payload's `flags` field) and a magic first line of the form `%%flags[name,...]` (a comma-separated list inside the brackets). The magic line is parsed, the recognized flags are persisted, and the line is stripped from the text sent to the model and from the cached sidebar title -- but kept verbatim in the persisted/displayed message bubble so it survives copy-paste into a new conversation. The out-of-band field carries no text and so needs no stripping. See [Composer UI](#composer-ui-out-of-band-selection) below.
+Per-conversation flags are a small, extensible registry of opt-in behaviors set at the *start* of a conversation (on the first user message) and persisted onto the `Conversation` row as a JSON array of enabled flag names.
+
+There are two activation paths, both honored only on the first web message and merged into one set: a **composer Flags popover** (checkboxes that ride out-of-band on the `send_message` payload's `flags` field) and a magic first line of the form `%%flags[name,...]` (a comma-separated list inside the brackets).
+
+The magic line is parsed, the recognized flags are persisted, and the line is stripped from the text sent to the model and from the cached sidebar title -- but kept verbatim in the persisted/displayed message bubble so it survives copy-paste into a new conversation. The out-of-band field carries no text and so needs no stripping. See [Composer UI](#composer-ui-out-of-band-selection) below.
 
 Two flags exist today: `nested_subagents`, which lets 1st-level sub-agents spawn one tier of 2nd-level sub-agents (see [Gemini API](gemini-api.md)), and `user_subagents`, which lets the conversation propose cross-user subagent runs via `create_action_request(request_type="run_user_subagent")` -- without it the dispatch arm rejects that request type same-turn (see [Cross-User Subagents](user-subagents.md); the flag gates only the caller side, never the launched subagent conversation).
 
@@ -26,7 +30,11 @@ A flag can additionally be **feature-gated**: `user_subagents` also requires the
 
 ## Flags Registry
 
-`KNOWN_FLAGS` in `chat/conversation_flags.py` is the authoritative set of recognized flag names. Tokens in a `%%flags[...]` line (or in the out-of-band `flags` field) that are not in this set are silently dropped, so both activation paths stay forgiving and forward-compatible. Only recognized flags are persisted. `FLAG_LABELS` in the same module is the canonical human display registry (label + description per flag) used by the composer popover; the frontend hand-mirrors it in `frontend/src/constants/flags.ts` (`AVAILABLE_FLAGS`) -- there is no endpoint, so adding a future flag requires touching **both** files plus `KNOWN_FLAGS` and a consumer. Aside from that FE/BE drift caveat, adding a flag is a small change: define a constant, add it to `KNOWN_FLAGS` and `FLAG_LABELS`, mirror it in `AVAILABLE_FLAGS`, and wire up a consumer; the storage column and the parser need no change.
+`KNOWN_FLAGS` in `chat/conversation_flags.py` is the authoritative set of recognized flag names. Tokens in a `%%flags[...]` line (or in the out-of-band `flags` field) that are not in this set are silently dropped, so both activation paths stay forgiving and forward-compatible. Only recognized flags are persisted.
+
+`FLAG_LABELS` in the same module is the canonical human display registry (label + description per flag) used by the composer popover; the frontend hand-mirrors it in `frontend/src/constants/flags.ts` (`AVAILABLE_FLAGS`) -- there is no endpoint, so adding a future flag requires touching **both** files plus `KNOWN_FLAGS` and a consumer.
+
+Aside from that FE/BE drift caveat, adding a flag is a small change: define a constant, add it to `KNOWN_FLAGS` and `FLAG_LABELS`, mirror it in `AVAILABLE_FLAGS`, and wire up a consumer; the storage column and the parser need no change.
 
 ## First-Message Flag Parsing
 
@@ -45,7 +53,11 @@ The magic line is parsed only on the first web message, at the single send entry
 
 The composer toolbar carries a **Flags** button (flag icon) next to the `+ Skill` button. On a fresh conversation (`messages.length === 0`) clicking it opens a popover of human-readable checkboxes -- one per entry in `AVAILABLE_FLAGS` (`frontend/src/constants/flags.ts`), each showing the flag's label and description. The selection is local UI state in the shared `Composer.tsx` (`selectedFlags`), reset on conversation switch and closed on outside click.
 
-On the first send (and only the first -- `messages.length === 0`), the selected flag ids ride **out of band** on the `send_message` WebSocket payload as the optional `flags` field (a list of strings), threaded `Composer` onSend -> `ChatPanel.handleSendMessage` -> `useConversation.sendMessage` -> `WebSocketManager.sendMessage` (which omits the field when empty). On the root home screen the same `Composer` lives in `HomeComposer`, which has no live conversation yet, so the selected flags are stashed on `ConversationContext.pendingFirstMessage` and replayed through `ChatPanel`'s auto-send effect on the first send (see [Frontend -- Home Screen](frontend.md#home-screen-homecomposer)). This is distinct from, and parallel to, the `%%flags` magic line, which remains a fallback (e.g. for copy-pasted prompts). See [Realtime -- send_message](realtime.md).
+On the first send (and only the first -- `messages.length === 0`), the selected flag ids ride **out of band** on the `send_message` WebSocket payload as the optional `flags` field (a list of strings), threaded `Composer` onSend -> `ChatPanel.handleSendMessage` -> `useConversation.sendMessage` -> `WebSocketManager.sendMessage` (which omits the field when empty).
+
+On the root home screen the same `Composer` lives in `HomeComposer`, which has no live conversation yet, so the selected flags are stashed on `ConversationContext.pendingFirstMessage` and replayed through `ChatPanel`'s auto-send effect on the first send (see [Frontend -- Home Screen](frontend.md#home-screen-homecomposer)).
+
+This is distinct from, and parallel to, the `%%flags` magic line, which remains a fallback (e.g. for copy-pasted prompts). See [Realtime -- send_message](realtime.md).
 
 Backend handling is in `_handle_send_message` (`chat/realtime/socket.py`): the `flags` field is validated to be a list of strings (lowercased/trimmed, intersected with `KNOWN_FLAGS`, deduped, unknowns and malformed shapes dropped -- a non-list is treated as no flags), then unioned on the first message only with the `%%flags` parse result into `merged_flags`. That merged set is persisted via the existing idempotent `set_conversation_flags()` and threaded into the run (see below). The out-of-band field carries no prompt text, so it bypasses the strip / empty-after-strip machinery entirely.
 
@@ -53,7 +65,11 @@ After the first message the Flags button is replaced by a read-only `"N flag(s) 
 
 ## Flag Threading Through the Run
 
-Flags are read from the DB on every turn (not just the first), so the effective flag set is threaded into the run rather than re-parsed. `_handle_send_message` passes `meta["flags"] or merged_flags` (existing row flags win over the flags just merged off this message -- magic line plus out-of-band selection) into `_run_send_message`, which forwards them to `run_conversation_turn(flags=...)`. The conversation loop resolves `nested_subagents` from the array and threads it into the system-prompt builder and the sub-agent spawn arms (see [Gemini API](gemini-api.md)). The wait-handle resume path has no `meta` dict, so it queries `get_conversation_flags()` directly to preserve behavior across suspend/resume.
+Flags are read from the DB on every turn (not just the first), so the effective flag set is threaded into the run rather than re-parsed.
+
+`_handle_send_message` passes `meta["flags"] or merged_flags` (existing row flags win over the flags just merged off this message -- magic line plus out-of-band selection) into `_run_send_message`, which forwards them to `run_conversation_turn(flags=...)`.
+
+The conversation loop resolves `nested_subagents` from the array and threads it into the system-prompt builder and the sub-agent spawn arms (see [Gemini API](gemini-api.md)). The wait-handle resume path has no `meta` dict, so it queries `get_conversation_flags()` directly to preserve behavior across suspend/resume.
 
 ## Scope and Constraints
 

@@ -4,7 +4,13 @@ This document describes how Quest reads Google Cloud Platform resources (project
 
 ## Overview
 
-GCP reads ride on the existing per-user Google Services OAuth credentials -- the same Bearer token used by Gmail/Calendar/Drive/Docs/Sheets/Slides/Tasks -- so there is no separate connection step or Settings entry. Most GCP reads are plain GET requests made via `authed_get`. The reads Google exposes only as POST (search organizations, read log entries, project-level IAM policy) go through `authed_post`, the POST-capable sibling registered alongside `authed_get` (see [Authenticated External API Requests](../architecture/gemini-api.md#authenticated-external-api-requests-authed_get)). Four GCP hosts are registered in `_SERVICE_REGISTRY`, all sharing the Google Services loader/injector with `requires_user: True` and `retry_on_401: True`. Access is kept strictly **read-only at the application layer** by the per-host GET/POST allow-lists; the OAuth scope itself is the full `cloud-platform` scope (see Design Decisions). The backend documentation lives in the gated `system:gcp` system skill rather than always-on prompt text.
+GCP reads ride on the existing per-user Google Services OAuth credentials -- the same Bearer token used by Gmail/Calendar/Drive/Docs/Sheets/Slides/Tasks -- so there is no separate connection step or Settings entry.
+
+Most GCP reads are plain GET requests made via `authed_get`. The reads Google exposes only as POST (search organizations, read log entries, project-level IAM policy) go through `authed_post`, the POST-capable sibling registered alongside `authed_get` (see [Authenticated External API Requests](../architecture/gemini-api.md#authenticated-external-api-requests-authed_get)).
+
+Four GCP hosts are registered in `_SERVICE_REGISTRY`, all sharing the Google Services loader/injector with `requires_user: True` and `retry_on_401: True`. Access is kept strictly **read-only at the application layer** by the per-host GET/POST allow-lists; the OAuth scope itself is the full `cloud-platform` scope (see Design Decisions).
+
+The backend documentation lives in the gated `system:gcp` system skill rather than always-on prompt text.
 
 ## Key Files
 
@@ -28,7 +34,11 @@ GCP reads require the user to have connected Google Services; the four entries s
 **OAuth scope required** (added to `GOOGLE_SERVICE_SCOPES` in `auth/config.py`):
 - `https://www.googleapis.com/auth/cloud-platform` -- the **full** platform scope, not a read-only variant.
 
-Because it is a new scope, **existing users must re-consent** to the Google Services OAuth grant before GCP requests will succeed; until re-consent, requests fail with a 403 scope/permission error (`ACCESS_TOKEN_SCOPE_INSUFFICIENT`). Re-consent is detected by the `/connectors` `needs_reauth` check, which compares the stored scope set against `GOOGLE_SERVICE_SCOPES`. The Google callback in `auth/google_services.py` now persists the scopes Google **actually granted** (`credentials.granted_scopes`, falling back to the requested set only when Google returns no `scope` field) rather than the requested set, so a partial grant (user de-selected a scope on the consent screen) cannot leave a connector showing "Connected" while calls 403.
+Because it is a new scope, **existing users must re-consent** to the Google Services OAuth grant before GCP requests will succeed; until re-consent, requests fail with a 403 scope/permission error (`ACCESS_TOKEN_SCOPE_INSUFFICIENT`).
+
+Re-consent is detected by the `/connectors` `needs_reauth` check, which compares the stored scope set against `GOOGLE_SERVICE_SCOPES`.
+
+The Google callback in `auth/google_services.py` now persists the scopes Google **actually granted** (`credentials.granted_scopes`, falling back to the requested set only when Google returns no `scope` field) rather than the requested set, so a partial grant (user de-selected a scope on the consent screen) cannot leave a connector showing "Connected" while calls 403.
 
 ## GCP Read Access
 

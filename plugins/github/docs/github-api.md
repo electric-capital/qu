@@ -4,7 +4,11 @@ This document describes how Quest accesses GitHub data for reading repositories,
 
 ## Overview
 
-The GitHub integration is packaged as the in-tree `plugins/github` plugin (plugin id `github`; see [Plugins](../../../docs/architecture/plugins.md)) — the reference implementation for an **oauth-kind** per-user plugin connection. The plugin's manifest registers the `api.github.com` entry into the `authed_get` service registry: reads are authenticated GET requests directly to the GitHub REST API at `https://api.github.com/...`, with the user's OAuth access token injected as a Bearer token, an `allowed_endpoints` regex list restricting reachable paths, and service-level `default_headers` supplying GitHub's required `User-Agent` and recommended `Accept: application/vnd.github+json` headers. A dedicated `github_get_job_log` plugin tool (previously the core `get_github_job_log`) handles the special case of Actions job log downloads, which return a 302 to a signed third-party URL and would otherwise leak the user's bearer token.
+The GitHub integration is packaged as the in-tree `plugins/github` plugin (plugin id `github`; see [Plugins](../../../docs/architecture/plugins.md)) — the reference implementation for an **oauth-kind** per-user plugin connection.
+
+The plugin's manifest registers the `api.github.com` entry into the `authed_get` service registry: reads are authenticated GET requests directly to the GitHub REST API at `https://api.github.com/...`, with the user's OAuth access token injected as a Bearer token, an `allowed_endpoints` regex list restricting reachable paths, and service-level `default_headers` supplying GitHub's required `User-Agent` and recommended `Accept: application/vnd.github+json` headers.
+
+A dedicated `github_get_job_log` plugin tool (previously the core `get_github_job_log`) handles the special case of Actions job log downloads, which return a 302 to a signed third-party URL and would otherwise leak the user's bearer token.
 
 ## Key Files
 
@@ -21,7 +25,11 @@ The GitHub integration is packaged as the in-tree `plugins/github` plugin (plugi
 
 GitHub reads require the user to connect their GitHub account via Settings > Data Connections.
 
-**Token storage:** the `oauth_blob` of the user's `user_service_credentials` row for service `github`, populated by the OAuth callback in `plugins/github/oauth.py` (the pre-plugin `users.github_oauth` column was migrated into rows by Alembic revision `a7c3e91b52d8`). The callback records the scopes GitHub actually **granted**, and the plugin's `needs_reauth` hook compares them against `GITHUB_SCOPES` so a widened scope list shows the "Update Available" re-authorize badge on the connector row. The scope check only applies to classic OAuth App tokens (`gho_` prefix): when the configured client credentials belong to a **GitHub App**, the token exchange returns a `ghu_` user access token with an empty `scope` (permissions come from the app installation), so `needs_reauth` skips the comparison for `ghu_` tokens instead of flagging re-auth forever.
+**Token storage:** the `oauth_blob` of the user's `user_service_credentials` row for service `github`, populated by the OAuth callback in `plugins/github/oauth.py` (the pre-plugin `users.github_oauth` column was migrated into rows by Alembic revision `a7c3e91b52d8`).
+
+The callback records the scopes GitHub actually **granted**, and the plugin's `needs_reauth` hook compares them against `GITHUB_SCOPES` so a widened scope list shows the "Update Available" re-authorize badge on the connector row.
+
+The scope check only applies to classic OAuth App tokens (`gho_` prefix): when the configured client credentials belong to a **GitHub App**, the token exchange returns a `ghu_` user access token with an empty `scope` (permissions come from the app installation), so `needs_reauth` skips the comparison for `ghu_` tokens instead of flagging re-auth forever.
 
 **Credential loading:** `load_github_credentials()` in `plugins/github/upstream.py` reads `access_token` out of the `oauth_blob` on the user dict's attached `service_credentials["github"]` row. If the user has not connected GitHub, the handler returns the `missing_credentials_error` defined on the registry entry directing the user to Settings > Data Connections.
 
@@ -29,9 +37,15 @@ The GitHub service entry sets `requires_user: True` (per-user OAuth credentials)
 
 ## GitHub Read Access (via `authed_get`)
 
-GitHub reads use `authed_get` with the GitHub REST API at `api.github.com`. The plugin's service entry (registered into `_SERVICE_REGISTRY` at load) defines the allowed endpoint patterns via regex validation -- requests to non-matching paths are rejected. The allow-list covers core repository reads (repos, issues, pull requests, commits, contents, search, org repo lists) and read-only GitHub Actions endpoints (workflow runs, individual runs, jobs for a run, jobs for a re-run attempt, single jobs with their step array, workflow definitions, and runs filtered by workflow). See `plugins/github/manifest.py` for the full allowed endpoint list and `plugins/github/instructions.md` for the LLM-facing documentation (base URL, key paths, common query parameters, and example invocations).
+GitHub reads use `authed_get` with the GitHub REST API at `api.github.com`. The plugin's service entry (registered into `_SERVICE_REGISTRY` at load) defines the allowed endpoint patterns via regex validation -- requests to non-matching paths are rejected.
 
-Repo file contents (via `/repos/{owner}/{repo}/contents/...`), search results, and full PR/issue listings frequently exceed the 3 KB `authed_get` size gate. When the model wants to grep, parse, or otherwise post-process the response with `run_python` / `run_script`, passing `output_file` on the `authed_get` call writes the body under the hidden `.responses/` workspace subdirectory (non-destructively -- a name collision errors) and returns a small receipt whose `path` is the `.responses/...` location. For binary file content fetched via `?raw=true` or the `download_url` from a contents response, `output_file` also unlocks `alt=media`-style downloads on hosts that support them. Job log downloads stay on the dedicated `github_get_job_log` tool because of the 302-to-Azure two-hop pattern (see below). See [Large Response Protection](../../../docs/architecture/gemini-api.md#large-response-protection).
+The allow-list covers core repository reads (repos, issues, pull requests, commits, contents, search, org repo lists) and read-only GitHub Actions endpoints (workflow runs, individual runs, jobs for a run, jobs for a re-run attempt, single jobs with their step array, workflow definitions, and runs filtered by workflow).
+
+See `plugins/github/manifest.py` for the full allowed endpoint list and `plugins/github/instructions.md` for the LLM-facing documentation (base URL, key paths, common query parameters, and example invocations).
+
+Repo file contents (via `/repos/{owner}/{repo}/contents/...`), search results, and full PR/issue listings frequently exceed the 3 KB `authed_get` size gate. When the model wants to grep, parse, or otherwise post-process the response with `run_python` / `run_script`, passing `output_file` on the `authed_get` call writes the body under the hidden `.responses/` workspace subdirectory (non-destructively -- a name collision errors) and returns a small receipt whose `path` is the `.responses/...` location.
+
+For binary file content fetched via `?raw=true` or the `download_url` from a contents response, `output_file` also unlocks `alt=media`-style downloads on hosts that support them. Job log downloads stay on the dedicated `github_get_job_log` tool because of the 302-to-Azure two-hop pattern (see below). See [Large Response Protection](../../../docs/architecture/gemini-api.md#large-response-protection).
 
 ### Default Headers
 
@@ -39,7 +53,11 @@ The GitHub registry entry declares a `default_headers` dict containing `User-Age
 
 ## Reading Actions Job Logs (`github_get_job_log`)
 
-Job log downloads use a dedicated tool rather than `authed_get` because the GitHub endpoint `/repos/{owner}/{repo}/actions/jobs/{job_id}/logs` returns a 302 redirect to a short-lived signed Azure Blob Storage URL with the actual log body. The handler in `plugins/github/tools.py` (`_handle_github_get_job_log()`) makes the first hop with the user's GitHub bearer token, captures the redirect, and then follows the second hop in a fresh unauthenticated `httpx.AsyncClient` so that the bearer token is never sent to the third-party storage host. The response body is also a plain-text log (not JSON) that can be many megabytes, which makes it a poor fit for the JSON-oriented `authed_get` response shape.
+Job log downloads use a dedicated tool rather than `authed_get` because the GitHub endpoint `/repos/{owner}/{repo}/actions/jobs/{job_id}/logs` returns a 302 redirect to a short-lived signed Azure Blob Storage URL with the actual log body.
+
+The handler in `plugins/github/tools.py` (`_handle_github_get_job_log()`) makes the first hop with the user's GitHub bearer token, captures the redirect, and then follows the second hop in a fresh unauthenticated `httpx.AsyncClient` so that the bearer token is never sent to the third-party storage host.
+
+The response body is also a plain-text log (not JSON) that can be many megabytes, which makes it a poor fit for the JSON-oriented `authed_get` response shape.
 
 The handler writes the log into the conversation workspace. The default destination is `github-job-logs/github-job-{job_id}.log`. Callers may pass a `path` argument to override this: a value ending in `/` (or matching an existing directory) is treated as a directory and the default filename is appended; otherwise the value is treated as a full file path. Absolute paths and `..` traversal are rejected so logs cannot escape the workspace.
 
@@ -88,7 +106,15 @@ GitHub's REST API rejects requests without a `User-Agent` header and recommends 
 Write operations (creating issues, pushing code, managing PRs) carry higher risk and would require explicit user confirmation flows. Starting with read-only access provides immediate value for querying repository data while minimizing risk. The `allowed_endpoints` gate enforces this server-side, independent of the token's own scope.
 
 **Why a dedicated `github_get_job_log` tool instead of routing job logs through `authed_get`?**
-Three reasons make job logs a poor fit for the generic `authed_get` path. First, the GitHub job-logs endpoint returns a 302 to a signed Azure Blob Storage URL; following that redirect with the user's GitHub bearer token still attached would leak the token to a third-party host. The dedicated handler does the second hop in a fresh unauthenticated `httpx.AsyncClient` so the token never leaves api.github.com. Second, the response body is a plain-text log (not JSON) and is often many megabytes -- pulling it inline would defeat the purpose of the `authed_get` size gate. Third, agents almost always want job logs as a workspace file they can grep and re-read, so the tool writes directly to the workspace and returns only metadata plus a short preview.
+Three reasons make job logs a poor fit for the generic `authed_get` path.
+
+- First, the GitHub job-logs endpoint returns a 302 to a signed Azure Blob Storage URL; following that redirect with the user's GitHub bearer token still attached would leak the token to a third-party host. The dedicated handler does the second hop in a fresh unauthenticated `httpx.AsyncClient` so the token never leaves api.github.com.
+- Second, the response body is a plain-text log (not JSON) and is often many megabytes -- pulling it inline would defeat the purpose of the `authed_get` size gate.
+- Third, agents almost always want job logs as a workspace file they can grep and re-read, so the tool writes directly to the workspace and returns only metadata plus a short preview.
 
 **Why is GitHub a plugin?**
-Phase 5 of the plugin architecture ([Plugins](../../../docs/architecture/plugins.md)) needed a proving migration for the oauth-kind `UserConnectionSpec` -- a plugin-provided `/auth/<id>` router, token storage in `user_service_credentials.oauth_blob`, and the `needs_reauth` hook. GitHub was the natural candidate: its OAuth flow is the simplest of the core connectors (no refresh tokens), and its whole surface (service entry, skill, one tool, credential schema) fits the manifest. The tool was renamed `get_github_job_log` -> `github_get_job_log` for the `<id>_` prefix rule (tool names have no persistence, so the rename is free); the store key (`github.json`), connected-services key, `system:github` id, and OAuth URLs are all unchanged.
+Phase 5 of the plugin architecture ([Plugins](../../../docs/architecture/plugins.md)) needed a proving migration for the oauth-kind `UserConnectionSpec` -- a plugin-provided `/auth/<id>` router, token storage in `user_service_credentials.oauth_blob`, and the `needs_reauth` hook.
+
+GitHub was the natural candidate: its OAuth flow is the simplest of the core connectors (no refresh tokens), and its whole surface (service entry, skill, one tool, credential schema) fits the manifest.
+
+The tool was renamed `get_github_job_log` -> `github_get_job_log` for the `<id>_` prefix rule (tool names have no persistence, so the rename is free); the store key (`github.json`), connected-services key, `system:github` id, and OAuth URLs are all unchanged.

@@ -24,7 +24,11 @@ The API client provides a type-safe interface for interacting with the chat back
 
 **Location:** `frontend/src/api/client.ts`
 
-Every function is one call to the shared wrapper in `frontend/src/api/request.ts`: `apiGet`/`apiPost`/`apiPut`/`apiDelete<T>(url, { query?, body?, nullOn? })` sends the session cookie (`credentials: 'include'`), JSON-serializes `body` (setting `Content-Type` only when a body is present), appends `query` params while dropping `undefined`/`null` entries, and returns the parsed JSON body; `nullOn: [404]` turns a listed status into a `null` result for optional rows such as a routine's schedule. Non-2xx responses throw `ApiClientError` (defined in `request.ts`, re-exported from `client.ts`) with `statusCode`, `errorCode`, `message`, and an optional `details` field populated with the full parsed error body; the message and code are read from either the flat `{error, message}` body or FastAPI's `{detail: {...}}` / `{detail: "text"}` envelope. Callers reading structured error payloads (for example the `current` row inside a `409 stale_update` response from the routine and schedule update endpoints) read it from `err.details`.
+Every function is one call to the shared wrapper in `frontend/src/api/request.ts`: `apiGet`/`apiPost`/`apiPut`/`apiDelete<T>(url, { query?, body?, nullOn? })` sends the session cookie (`credentials: 'include'`), JSON-serializes `body` (setting `Content-Type` only when a body is present), appends `query` params while dropping `undefined`/`null` entries, and returns the parsed JSON body. `nullOn: [404]` turns a listed status into a `null` result for optional rows such as a routine's schedule.
+
+Non-2xx responses throw `ApiClientError` (defined in `request.ts`, re-exported from `client.ts`) with `statusCode`, `errorCode`, `message`, and an optional `details` field populated with the full parsed error body; the message and code are read from either the flat `{error, message}` body or FastAPI's `{detail: {...}}` / `{detail: "text"}` envelope.
+
+Callers reading structured error payloads (for example the `current` row inside a `409 stale_update` response from the routine and schedule update endpoints) read it from `err.details`.
 
 ## WebSocket Streaming
 

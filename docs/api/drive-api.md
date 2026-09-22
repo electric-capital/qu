@@ -48,9 +48,21 @@ Creates a new Google Document in the user's Drive root via multipart upload to t
 
 ## Drive Upload (via `upload_to_drive` Action Request)
 
-The agent uploads workspace files to the user's Drive by proposing an `upload_to_drive` action request (`create_action_request(request_type="upload_to_drive", params={...})`), which appends an inline approval card. One request carries up to 10 files bound for a single destination folder (a `files` list of `{path, filename?}` entries), so a batch costs the user one approval instead of one per file. On Approve, the handler reads each workspace file's raw bytes and uploads them to Drive sequentially. Unlike "Save to Drive" (markdown-only, converted to a native Google Doc), this uploads the files **as-is** with no conversion, so the results are generic Drive file links (`https://drive.google.com/file/d/<id>/view`).
+The agent uploads workspace files to the user's Drive by proposing an `upload_to_drive` action request (`create_action_request(request_type="upload_to_drive", params={...})`), which appends an inline approval card. One request carries up to 10 files bound for a single destination folder (a `files` list of `{path, filename?}` entries), so a batch costs the user one approval instead of one per file. On Approve, the handler reads each workspace file's raw bytes and uploads them to Drive sequentially.
 
-**Handler:** `UploadToDriveHandler` in `chat/action_request_types/upload_to_drive.py`. Params (`files` required -- 1..10 `{path, filename?}` entries, no duplicate paths; the legacy single-file top-level `path` / `filename` shape is still accepted for pending pre-deploy rows; `folder_id` optional; `new_folder_name` / `new_folder_parent_id` optional, creating the destination folder at approval time -- `new_folder_name` is mutually exclusive with `folder_id`, and the parent id is only valid alongside the name), the per-file 50 MB cap, the `drive.file` scope pre-check, shared-drive support (`supportsAllDrives=true`), the server-injected `folder_name` / `new_folder_parent_name` preview enrichment, the `folder_id` / `folder_name` / `folder_url` result extension when a folder was created, and the partial-batch / duplicate-folder recovery error shape on mid-batch failure are all documented in [Action Requests Architecture](../architecture/action-requests.md). Every file is pre-flight resolved (traversal guards + size cap) via `resolve_workspace_file()` in `chat/action_request_types/_io_attachments.py` before any Drive mutation; bytes are then read one file at a time via `read_resolved_file_bytes()`.
+Unlike "Save to Drive" (markdown-only, converted to a native Google Doc), this uploads the files **as-is** with no conversion, so the results are generic Drive file links (`https://drive.google.com/file/d/<id>/view`).
+
+**Handler:** `UploadToDriveHandler` in `chat/action_request_types/upload_to_drive.py`. The following are all documented in [Action Requests Architecture](../architecture/action-requests.md):
+
+- Params (`files` required -- 1..10 `{path, filename?}` entries, no duplicate paths; the legacy single-file top-level `path` / `filename` shape is still accepted for pending pre-deploy rows; `folder_id` optional; `new_folder_name` / `new_folder_parent_id` optional, creating the destination folder at approval time -- `new_folder_name` is mutually exclusive with `folder_id`, and the parent id is only valid alongside the name),
+- the per-file 50 MB cap,
+- the `drive.file` scope pre-check,
+- shared-drive support (`supportsAllDrives=true`),
+- the server-injected `folder_name` / `new_folder_parent_name` preview enrichment,
+- the `folder_id` / `folder_name` / `folder_url` result extension when a folder was created, and
+- the partial-batch / duplicate-folder recovery error shape on mid-batch failure.
+
+Every file is pre-flight resolved (traversal guards + size cap) via `resolve_workspace_file()` in `chat/action_request_types/_io_attachments.py` before any Drive mutation; bytes are then read one file at a time via `read_resolved_file_bytes()`.
 
 ## Drive Folder Creation (via `create_drive_folder` Action Request)
 
@@ -64,7 +76,9 @@ The agent creates a Drive folder by proposing a `create_drive_folder` action req
 
 **Scope caveat:** Under `drive.file` the app can only see files and folders it created or that were opened with it, so targeting an arbitrary pre-existing folder id (`folder_id` / `new_folder_parent_id` / `parent_folder_id`) can fail with a Drive 404 if that folder is not app-accessible. Folders created through `create_drive_folder` or the `new_folder_name` path are app-created and always usable as parents.
 
-**Model-facing instructions:** `api/drive.py` (`get_instructions()`, "Google Drive Write Operations" section), surfaced via the `system:drive` skill. The `system:action_requests` routing map in `chat/system_skills/catalog.py` points the model to `system:drive` for Drive uploads and folder creation, and its generic "Minimize approval round trips" section (plus the drive skill's "Batch your uploads" note) instructs the model to batch same-destination uploads into one request's `files` list, fold folder creation into the upload via `new_folder_name` rather than a separate `create_drive_folder` request, and only split batches across requests for >10 files or multiple destination folders. The instructions also direct the model to search for an existing folder via `authed_get` before proposing `create_drive_folder` (Drive allows same-name sibling folders).
+**Model-facing instructions:** `api/drive.py` (`get_instructions()`, "Google Drive Write Operations" section), surfaced via the `system:drive` skill. The `system:action_requests` routing map in `chat/system_skills/catalog.py` points the model to `system:drive` for Drive uploads and folder creation, and its generic "Minimize approval round trips" section (plus the drive skill's "Batch your uploads" note) instructs the model to batch same-destination uploads into one request's `files` list, fold folder creation into the upload via `new_folder_name` rather than a separate `create_drive_folder` request, and only split batches across requests for >10 files or multiple destination folders.
+
+The instructions also direct the model to search for an existing folder via `authed_get` before proposing `create_drive_folder` (Drive allows same-name sibling folders).
 
 Both types slot into the existing action-request architecture: they block via an `action_request` wait handle plus `SuspendForActionRequest`, require no DB migration (only the `ActionRequestType` enum addition in `db/models.py`, from which the tool schemas derive), no new wait-handle kind, and no new REST endpoint (the existing resolve endpoint passes `conversation_id` to `execute()` for workspace resolution). They are disabled in Slack-driven runs, and sub-agents must hand the proposed request back to the parent via `agent_task_response` (`create_action_request` is top-level only).
 
