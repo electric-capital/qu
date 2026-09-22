@@ -4,7 +4,11 @@ This document describes how Quest exposes Telegram to the LLM agent and to sandb
 
 ## Overview
 
-Quest reads Telegram dialogs, messages, and contacts through four dedicated dynamic tools dispatched via `tool_call` (`telegram_get_me`, `telegram_list_dialogs`, `telegram_get_messages`, `telegram_list_contacts`). There are no `/api/telegram/*` HTTP routes: the `/api/telegram` prefix stays blocked in route dispatch so cached sessions that still emit `curl_proxy_get` get a "use the dedicated tool" pointer, and sandbox scripts (`run_script` / `run_python`) reach the same four tools through the `POST /api/tool-call` bridge. Sending goes through the `send_telegram_message` action request. Every read and write runs on a persistent Telethon client connection kept per user by the `TelegramClientManager` singleton.
+Quest reads Telegram dialogs, messages, and contacts through four dedicated dynamic tools dispatched via `tool_call` (`telegram_get_me`, `telegram_list_dialogs`, `telegram_get_messages`, `telegram_list_contacts`).
+
+There are no `/api/telegram/*` HTTP routes: the `/api/telegram` prefix stays blocked in route dispatch so cached sessions that still emit `curl_proxy_get` get a "use the dedicated tool" pointer, and sandbox scripts (`run_script` / `run_python`) reach the same four tools through the `POST /api/tool-call` bridge.
+
+Sending goes through the `send_telegram_message` action request. Every read and write runs on a persistent Telethon client connection kept per user by the `TelegramClientManager` singleton.
 
 Three things distinguish the plugin from the OAuth plugins:
 
@@ -63,7 +67,11 @@ Code running in the script sandbox cannot use `tool_call`; it POSTs `{"tool_name
 
 Sending is handled through the Action Requests system rather than a tool. The agent proposes a `send_telegram_message` action request, the user approves it via the chat UI, and the backend executes it via `SendTelegramMessageHandler`.
 
-`validate_params()` format-checks `dialog_id` before persisting an `action_requests` row: the value must be a Python `int` or a digit string with an optional leading `-` (the regex lives at module scope in `handlers.py`), which rejects `@username`, `t.me/...` URLs, `+E.164` phone numbers, Slack-style `C.../U...` ids, whitespace-padded strings, `bool` (which subclasses `int`), `float`, `list`, and `dict`. Out-of-band integers are also rejected: `0`, the bare `-100` supergroup/channel marker prefix, and `|dialog_id| > 10**15` (see `_DIALOG_ID_MAX_ABS`). Format errors name the field and echo the offending value truncated to ~100 chars so the model self-corrects on the same turn instead of failing inside `execute()` with an opaque Telethon `PeerIdInvalid`. The 4096-character `message` cap matches Telegram's limit.
+`validate_params()` format-checks `dialog_id` before persisting an `action_requests` row: the value must be a Python `int` or a digit string with an optional leading `-` (the regex lives at module scope in `handlers.py`), which rejects `@username`, `t.me/...` URLs, `+E.164` phone numbers, Slack-style `C.../U...` ids, whitespace-padded strings, `bool` (which subclasses `int`), `float`, `list`, and `dict`.
+
+Out-of-band integers are also rejected: `0`, the bare `-100` supergroup/channel marker prefix, and `|dialog_id| > 10**15` (see `_DIALOG_ID_MAX_ABS`).
+
+Format errors name the field and echo the offending value truncated to ~100 chars so the model self-corrects on the same turn instead of failing inside `execute()` with an opaque Telethon `PeerIdInvalid`. The 4096-character `message` cap matches Telegram's limit.
 
 **Dialog name resolution:** the handler's `enrich_params_for_preview()` hook resolves the numeric id to a display name (first/last name for users, title for groups/channels) via `resolve_dialog_name()` and stores it as `dialog_name` for the approval card; the label is always re-derived from `dialog_id`, so a model-supplied `dialog_name` can never survive (it is also not in the handler's allow-list).
 

@@ -4,7 +4,11 @@ This document describes how Quest reads Ramp spend-management data (card transac
 
 ## Overview
 
-Ramp reads use the `authed_get` tool to make GET requests directly to the Ramp developer API at `https://api.ramp.com/developer/v1/...`. Ramp is a per-user OAuth 2.0 connector (like GitHub and Twitter/X): an admin configures a Ramp OAuth client (client id/secret) in Settings > Service Credentials, then each user connects individually via the Data Connections popup flow. Unlike GitHub, Ramp access tokens **expire** and refresh tokens **rotate on every use**, so the credential loader proactively refreshes near-expiry tokens (the Twitter pattern) and the registry entry additionally sets `retry_on_401` as a backstop. The backend documentation is carried in the `system:ramp` system skill, gated on the `ramp` connection.
+Ramp reads use the `authed_get` tool to make GET requests directly to the Ramp developer API at `https://api.ramp.com/developer/v1/...`. Ramp is a per-user OAuth 2.0 connector (like GitHub and Twitter/X): an admin configures a Ramp OAuth client (client id/secret) in Settings > Service Credentials, then each user connects individually via the Data Connections popup flow.
+
+Unlike GitHub, Ramp access tokens **expire** and refresh tokens **rotate on every use**, so the credential loader proactively refreshes near-expiry tokens (the Twitter pattern) and the registry entry additionally sets `retry_on_401` as a backstop.
+
+The backend documentation is carried in the `system:ramp` system skill, gated on the `ramp` connection.
 
 ## Key Files
 
@@ -29,7 +33,11 @@ Ramp reads use the `authed_get` tool to make GET requests directly to the Ramp d
 
 ## Ramp Read Access (via `authed_get`)
 
-The `api.ramp.com` registry entry gates paths with an `allowed_endpoints` regex list built from `_RAMP_READ_RESOURCES` — one pattern per resource root (`transactions`, `bills`, `reimbursements`, `users`, `vendors`, `statements`, `accounting`, `audit-logs`, …) matching the root and any sub-path, so list, detail, and nested reads all work. Cards are the exception: `/cards/physical` and `/cards/virtual` (list + detail) are allow-listed explicitly so that the card-vault endpoints (`/cards/vault/...`, `/vault/...` — full card numbers behind the `cards:read_vault` scope) stay unreachable. The token endpoints (`/developer/v1/token`, `/token/revoke`) and webhook config are also not proxied. No `allowed_post_endpoints` list exists, so every POST is rejected — the surface is read-only by construction.
+The `api.ramp.com` registry entry gates paths with an `allowed_endpoints` regex list built from `_RAMP_READ_RESOURCES` — one pattern per resource root (`transactions`, `bills`, `reimbursements`, `users`, `vendors`, `statements`, `accounting`, `audit-logs`, …) matching the root and any sub-path, so list, detail, and nested reads all work.
+
+Cards are the exception: `/cards/physical` and `/cards/virtual` (list + detail) are allow-listed explicitly so that the card-vault endpoints (`/cards/vault/...`, `/vault/...` — full card numbers behind the `cards:read_vault` scope) stay unreachable. The token endpoints (`/developer/v1/token`, `/token/revoke`) and webhook config are also not proxied.
+
+No `allowed_post_endpoints` list exists, so every POST is rejected — the surface is read-only by construction.
 
 Pagination is cursor-based (`page_size`, `start`; responses carry a `page.next` URL). Amounts are integers in the currency's minor unit. Large responses should use `authed_get`'s `output_file` argument. See `api/ramp.py` (`get_instructions()`) for the LLM-facing path table and examples.
 

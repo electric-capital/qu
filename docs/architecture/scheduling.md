@@ -85,7 +85,11 @@ When a scheduled run fires (`_execute_scheduled_run()` in `chat/scheduler.py`):
 
 The resulting conversation appears in the project's sidebar grouped under the routine's collapsible entry, picked up automatically by the sidebar's 30-second polling mechanism when the user is drilled into the project (see [Routines Architecture](routines.md) for sidebar conversation grouping details and [Frontend Architecture](frontend.md) for polling details).
 
-If a scheduled run issues `create_action_request`, the call blocks until the user resolves the card -- so the routine task suspends inside the dispatch arm and parks until a human approves, revises, or denies (or until the underlying wait-handle expiry fires at ~14 days). The suspend uses the same DB-backed pattern as web conversations: the sentinel unwinds the run cleanly, and `wait_resume.maybe_kick_resume()` on the resolve endpoint drives a fresh `run_conversation_turn()` to close out the dangling tool_use. Routines that need fire-and-forget writes should prefer `send_slack_dm_to_self`-style paths instead of `create_action_request`; see [Action Requests](action-requests.md) and the `system:action_requests` skill prose.
+If a scheduled run issues `create_action_request`, the call blocks until the user resolves the card -- so the routine task suspends inside the dispatch arm and parks until a human approves, revises, or denies (or until the underlying wait-handle expiry fires at ~14 days).
+
+The suspend uses the same DB-backed pattern as web conversations: the sentinel unwinds the run cleanly, and `wait_resume.maybe_kick_resume()` on the resolve endpoint drives a fresh `run_conversation_turn()` to close out the dangling tool_use.
+
+Routines that need fire-and-forget writes should prefer `send_slack_dm_to_self`-style paths instead of `create_action_request`; see [Action Requests](action-requests.md) and the `system:action_requests` skill prose.
 
 ### Concurrency
 

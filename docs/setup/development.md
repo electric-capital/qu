@@ -72,7 +72,11 @@ Model settings are in `server_config.json`, loaded by `load_server_config()` in 
 
 ### Anthropic Vertex AI
 
-To enable Claude models, add an `anthropic` section to `server_config.json` with `vertex_project_id` (required) and optionally `vertex_region` (default region: `us-east5`). The `vertex_region` value is the default; individual models can override it via a per-model `vertex_region` in `MODEL_REGISTRY` (Claude Opus 4.7, Opus 4.8, and Sonnet 5 are pinned to the `global` endpoint because Vertex serves them only there -- see [LLM Provider Abstraction -- Per-Model Vertex Region](../architecture/llm-providers.md#per-model-vertex-region)). Uses Google Cloud Application Default Credentials (ADC). If `vertex_project_id` is not configured and a user selects a Claude model, the backend raises a descriptive error. Gemini models work regardless of Anthropic configuration.
+To enable Claude models, add an `anthropic` section to `server_config.json` with `vertex_project_id` (required) and optionally `vertex_region` (default region: `us-east5`).
+
+The `vertex_region` value is the default; individual models can override it via a per-model `vertex_region` in `MODEL_REGISTRY` (Claude Opus 4.7, Opus 4.8, and Sonnet 5 are pinned to the `global` endpoint because Vertex serves them only there -- see [LLM Provider Abstraction -- Per-Model Vertex Region](../architecture/llm-providers.md#per-model-vertex-region)).
+
+Uses Google Cloud Application Default Credentials (ADC). If `vertex_project_id` is not configured and a user selects a Claude model, the backend raises a descriptive error. Gemini models work regardless of Anthropic configuration.
 
 ### Gemini Vertex AI
 

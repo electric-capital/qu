@@ -2,7 +2,11 @@
 
 ## Overview
 
-Quest runs a Slack Socket Mode client as a background worker tied to the FastAPI lifespan. The worker receives Events API envelopes over a WebSocket authenticated by an App-Level Token and turns user DMs to the bot into fully-driven Quest conversations: a top-level DM starts a new conversation (`origin="slack"`), threaded replies continue it, and the model answers by calling a dedicated tool that posts a Slack reply and suspends the run via a `kind="slack_reply"` wait-handle row. When the user replies in that thread, the Socket Mode worker resolves the row and kicks a headless resume so the model gets the next turn. See [Wait Handles Architecture](wait-handles.md) for the unified suspend / resume mechanism.
+Quest runs a Slack Socket Mode client as a background worker tied to the FastAPI lifespan.
+
+The worker receives Events API envelopes over a WebSocket authenticated by an App-Level Token and turns user DMs to the bot into fully-driven Quest conversations: a top-level DM starts a new conversation (`origin="slack"`), threaded replies continue it, and the model answers by calling a dedicated tool that posts a Slack reply and suspends the run via a `kind="slack_reply"` wait-handle row.
+
+When the user replies in that thread, the Socket Mode worker resolves the row and kicks a headless resume so the model gets the next turn. See [Wait Handles Architecture](wait-handles.md) for the unified suspend / resume mechanism.
 
 ## Key Files
 
@@ -92,7 +96,11 @@ Users can pick a preferred model for Slack-driven conversations via Settings > S
 
 Defined as `_SEND_SLACK_REPLY` in `chat/llm/tool_schemas.py` and exposed only via `SLACK_TOP_LEVEL_TOOLS` (top-level session only; sub-agents do not see it):
 
-The dispatch handler (`_handle_send_slack_reply()` in `chat/gemini_api/turn_tools.py`) validates the text, posts a threaded reply via `slack_driven_runtime.post_thread_reply()`, inserts a `kind="slack_reply"` `tool_wait_handles` row whose payload carries `{channel, thread_ts, posted_text, posted_ts}`, and raises `SuspendForSlackReply`. The top-level loop catches the sentinel, returns cleanly, and leaves a dangling `send_slack_reply_and_get_response` tool_use on disk (the boundary save in `_capturing_on_event` already persisted `sdk_history.json` at the `tool_use` event for this call). When the user replies, the debounce flush in `slack_driven_runtime._flush_after()` resolves the row with the collated `user_reply` and calls `wait_resume.maybe_kick_resume()`; the resume bucket reads the row and closes the dangling tool_use with `{"user_reply": ..., "posted_ts": ...}`.
+The dispatch handler (`_handle_send_slack_reply()` in `chat/gemini_api/turn_tools.py`) validates the text, posts a threaded reply via `slack_driven_runtime.post_thread_reply()`, inserts a `kind="slack_reply"` `tool_wait_handles` row whose payload carries `{channel, thread_ts, posted_text, posted_ts}`, and raises `SuspendForSlackReply`.
+
+The top-level loop catches the sentinel, returns cleanly, and leaves a dangling `send_slack_reply_and_get_response` tool_use on disk (the boundary save in `_capturing_on_event` already persisted `sdk_history.json` at the `tool_use` event for this call).
+
+When the user replies, the debounce flush in `slack_driven_runtime._flush_after()` resolves the row with the collated `user_reply` and calls `wait_resume.maybe_kick_resume()`; the resume bucket reads the row and closes the dangling tool_use with `{"user_reply": ..., "posted_ts": ...}`.
 
 `MAX_REPLY_CHARS = 3000` caps outgoing text (Slack's Assistant thread limit). Oversize text is rejected before posting with a structured error so the model can retry with a shorter message. There is no in-tool timeout: the wait-handle row stays pending until the user replies, the deadline-equivalent timer fires (currently not configured for slack_reply), or `cancel_pending_for_conversation()` flips it on conversation stop / cancellation. See [Wait Handles Architecture](wait-handles.md).
 
@@ -104,13 +112,19 @@ A Slack-driven run can stay suspended inside `send_slack_reply_and_get_response`
 
 **Cancellation tail edit.** `_dispatch_slack_model_run()` in `chat/slack_socket_mode.py` catches `CancelledError`, calls `_save_interrupted_sdk_history()` for any partial-text tail edit, and then calls `remove_chat_session()` so any follow-up turn in the same process rebuilds cleanly from disk. `_save_interrupted_sdk_history()` skips the tail edit when the on-disk last entry already ends on a dangling tool_use; appending text there would leave an unmatched tool_use followed by user text, which Anthropic rejects with `"tool_use ids were found without tool_result blocks immediately after"`.
 
-**Resume.** When the user replies in the thread, `enqueue_user_reply()` finds the pending `slack_reply` row, schedules a debounce timer, and on flush resolves the row with the collated `user_reply` and calls `wait_resume.maybe_kick_resume()`. The resume runs a fresh `run_conversation_turn()` with `message=""`, `origin="slack"`, and the `slack_context` reconstructed from the `slack_conversations` row; the resume bucket at the top of `run_conversation_turn()` looks up each dangling tool_use's `tool_id` in `tool_wait_handles` and closes the `send_slack_reply_and_get_response` tool_use with the resolved row's `{user_reply, posted_ts}`. See [Wait Handles -- Suspend / Resume](wait-handles.md#suspend--resume) for the unified bucket logic.
+**Resume.** When the user replies in the thread, `enqueue_user_reply()` finds the pending `slack_reply` row, schedules a debounce timer, and on flush resolves the row with the collated `user_reply` and calls `wait_resume.maybe_kick_resume()`.
+
+The resume runs a fresh `run_conversation_turn()` with `message=""`, `origin="slack"`, and the `slack_context` reconstructed from the `slack_conversations` row; the resume bucket at the top of `run_conversation_turn()` looks up each dangling tool_use's `tool_id` in `tool_wait_handles` and closes the `send_slack_reply_and_get_response` tool_use with the resolved row's `{user_reply, posted_ts}`. See [Wait Handles -- Suspend / Resume](wait-handles.md#suspend--resume) for the unified bucket logic.
 
 `_handle_threaded_reply()` logs a warning when `sdk_history.json` is missing at resume time. This should only affect Slack conversations created before the persistence fixes landed.
 
 ## Debounced User Replies
 
-`slack_driven_runtime.enqueue_user_reply()` coalesces rapid successive user replies in the same thread. Each accepted reply appends to a per-`(channel, thread_ts)` buffer and schedules a fresh `_flush_after(channel, thread_ts, DEBOUNCE_SECONDS=1.5)` task, cancelling the prior one. When the timer fires, the buffered parts are joined with `\n\n` and `_flush_after()` resolves the matching `slack_reply` wait-handle row with `{user_reply: <collated>, posted_ts}` and calls `wait_resume.maybe_kick_resume()` so the suspended run wakes up. This avoids spamming the model with tiny back-to-back turns when the user sends "send-send-send"-style messages. The debounce buffer is per-process; if it is lost across a restart, the next reply just opens a fresh debounce window against the still-pending wait-handle row.
+`slack_driven_runtime.enqueue_user_reply()` coalesces rapid successive user replies in the same thread. Each accepted reply appends to a per-`(channel, thread_ts)` buffer and schedules a fresh `_flush_after(channel, thread_ts, DEBOUNCE_SECONDS=1.5)` task, cancelling the prior one.
+
+When the timer fires, the buffered parts are joined with `\n\n` and `_flush_after()` resolves the matching `slack_reply` wait-handle row with `{user_reply: <collated>, posted_ts}` and calls `wait_resume.maybe_kick_resume()` so the suspended run wakes up. This avoids spamming the model with tiny back-to-back turns when the user sends "send-send-send"-style messages.
+
+The debounce buffer is per-process; if it is lost across a restart, the next reply just opens a fresh debounce window against the still-pending wait-handle row.
 
 ## Slack Reply Mode System Prompt
 
@@ -128,7 +142,9 @@ See the constant for the full text. The web UI composer is locked read-only (see
 Slack-origin runs cannot use `wait_for_handles` or `create_action_request` because their confirmation / approval UIs live in the (read-only) web composer. Both layers of the gate live in the same file-set as the rest of Slack Reply Mode:
 
 - **Prompt hygiene**: `_build_dynamic_tools_section()` in `chat/gemini_api/system_prompt.py` omits both tools from the Dynamic Tools enumeration when `is_slack=True` (via the `top_level_exclude` set built in `get_system_prompt`). `_SLACK_REPLY_MODE_SECTION` tells the model not to call them, to acknowledge memory requests in the Slack reply (noting that persisting memories requires the web UI), and to deliver write-action proposals in the reply text instead
-- **Behavioural gate (defense in depth)**: the top-level dispatch handlers in `chat/gemini_api/turn_tools.py` short-circuit with a structured JSON error when `is_slack_origin` is true, before any wait-handle row is inserted. This applies to both the `wait_for_handles` arm and the `create_action_request` arm. Without the `create_action_request` gate, a Slack run could suspend on `SuspendForActionRequest` waiting for an Approve / Revise / Deny click on a card the user cannot see, deadlocking the conversation. With it, the model gets a structured error and can fall back to delivering the proposal in the Slack reply text. Memory writes -- which now ride on `create_action_request(request_type="create_memory", ...)` -- inherit this gate automatically
+- **Behavioural gate (defense in depth)**: the top-level dispatch handlers in `chat/gemini_api/turn_tools.py` short-circuit with a structured JSON error when `is_slack_origin` is true, before any wait-handle row is inserted. This applies to both the `wait_for_handles` arm and the `create_action_request` arm.
+  - Without the `create_action_request` gate, a Slack run could suspend on `SuspendForActionRequest` waiting for an Approve / Revise / Deny click on a card the user cannot see, deadlocking the conversation. With it, the model gets a structured error and can fall back to delivering the proposal in the Slack reply text.
+  - Memory writes -- which now ride on `create_action_request(request_type="create_memory", ...)` -- inherit this gate automatically
 
 See [Wait Handles Architecture](wait-handles.md) for the wait-handle mechanism used in web conversations.
 

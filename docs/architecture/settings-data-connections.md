@@ -4,7 +4,9 @@ This document describes the Data Connections section of the Settings modal: how 
 
 ## Overview
 
-The Data Connections section of the Settings modal (Settings > Data Connections) lists **only the connections the user has added** (i.e. rows whose `connected` is true) -- the list builds up one connection at a time as the user adds them. New connections are added through an explicit flow: an "+ Add Connection" button opens a picker of the supported services not yet connected, and picking one triggers that service's flow (an OAuth popup, or a key-entry step). Everything is **fully data-driven**: `GET /connectors` returns a LIST of row objects covering every supported service (connected or not) and `DataConnectionsSection.tsx` renders both the connected list and the add picker generically from it -- there is no per-service JSX, so adding a connector (core or plugin-provided) is a backend-only change. Each connected row shows the connector's label (plus an optional description line), a status badge, and one or two action controls. The shape of a row's behavior depends on its `kind`: `"oauth"` (popup-based) or `"api_key"` (key form).
+The Data Connections section of the Settings modal (Settings > Data Connections) lists **only the connections the user has added** (i.e. rows whose `connected` is true) -- the list builds up one connection at a time as the user adds them. New connections are added through an explicit flow: an "+ Add Connection" button opens a picker of the supported services not yet connected, and picking one triggers that service's flow (an OAuth popup, or a key-entry step).
+
+Everything is **fully data-driven**: `GET /connectors` returns a LIST of row objects covering every supported service (connected or not) and `DataConnectionsSection.tsx` renders both the connected list and the add picker generically from it -- there is no per-service JSX, so adding a connector (core or plugin-provided) is a backend-only change. Each connected row shows the connector's label (plus an optional description line), a status badge, and one or two action controls. The shape of a row's behavior depends on its `kind`: `"oauth"` (popup-based) or `"api_key"` (key form).
 
 This connected-list + add-flow shape is also the seam for a planned evolution: allowing multiple connections of the same service under different auth (e.g. two Google accounts). The list-of-added-connections UI already reads like a list of connection instances; only the backend row identity (today one row per service) will need to change.
 
@@ -15,7 +17,11 @@ Each `/connectors` row carries:
 - `service`, `label`, optional `description` -- identity and display text
 - `kind`: `"oauth"` or `"api_key"`
 - `connected`, and for oauth rows optionally `needs_reauth`
-- `available` -- optional; `false` hides the row entirely (from both the connected list and the add picker). Every service needing admin-configured server-side integration credentials computes it: the core oauth rows (Google Services, Ramp) probe their canonical credential loader (`load_google_oauth_config` / the ramp store read) via the `_server_configured` helper in `get_connectors()`, and plugin rows use `plugin_server_available()` (e.g. a plugin without its server-side base URL, the Slack plugin without OAuth client credentials, or the Telegram plugin without its MTProto app credentials). Airtable carries no flag -- the user supplies their own PAT, so there is nothing server-side to configure.
+- `available` -- optional; `false` hides the row entirely (from both the connected list and the add picker). Every service needing admin-configured server-side integration credentials computes it:
+  - the core oauth rows (Google Services, Ramp) probe their canonical credential loader (`load_google_oauth_config` / the ramp store read) via the `_server_configured` helper in `get_connectors()`, and
+  - plugin rows use `plugin_server_available()` (e.g. a plugin without its server-side base URL, the Slack plugin without OAuth client credentials, or the Telegram plugin without its MTProto app credentials).
+
+  Airtable carries no flag -- the user supplies their own PAT, so there is nothing server-side to configure.
 - oauth rows: `connect_url` (the popup URL, `?popup=1` included) -- the frontend never builds auth URLs itself, which also removed the old popup-blocked-link URL special cases
 - api_key rows: `key_url` + `key_field` (the save form POSTs `{[key_field]: key}` to `key_url`), `key_placeholder`, optional `key_hint` (last characters of the stored key), and `disconnect_url`
 
@@ -52,7 +58,9 @@ Unlike OAuth connectors, API key connectors do show a Disconnect control because
 
 ## The Add Flow
 
-Below the connected list, an "+ Add Connection" button (hidden when every supported service is already connected) opens an inline picker panel showing the addable services -- rows with `available !== false && !connected` -- as a **grid of icon tiles**, each with the service's brand icon, label, and a kind hint ("Sign in" for oauth, "API key" for api_key; the description, when present, becomes the tile's hover title). Icons come from `serviceIcons.tsx` (`ServiceIcon`, keyed by the row's `service` id): inline brand SVGs for the known services plus a generic plug fallback for unknown ones, so the picker stays data-driven -- an icon entry is optional polish, not a requirement for a new connector. Connected rows reuse the same icon at a smaller size. Picking a tile triggers that service's flow:
+Below the connected list, an "+ Add Connection" button (hidden when every supported service is already connected) opens an inline picker panel showing the addable services -- rows with `available !== false && !connected` -- as a **grid of icon tiles**, each with the service's brand icon, label, and a kind hint ("Sign in" for oauth, "API key" for api_key; the description, when present, becomes the tile's hover title).
+
+Icons come from `serviceIcons.tsx` (`ServiceIcon`, keyed by the row's `service` id): inline brand SVGs for the known services plus a generic plug fallback for unknown ones, so the picker stays data-driven -- an icon entry is optional polish, not a requirement for a new connector. Connected rows reuse the same icon at a smaller size. Picking a tile triggers that service's flow:
 
 - **oauth**: the picker closes and the OAuth popup opens at the row's `connect_url` (same `handleOAuthConnect` path as Reconnect). When the flow completes, the status refresh makes the new connection appear in the list.
 - **api_key**: the panel advances to a key-entry step ("Connect <label>", with a Back control) rendering the `ApiKeyForm` (placeholder from `key_placeholder`); Save posts the key to `key_url` as `{[key_field]: key}` via `saveConnectorKey()` in `frontend/src/api/client.ts`, then closes the panel and refreshes. The key-entry step re-resolves the picked service against the freshest connector list, so a background refresh (or the service getting connected in another tab) drops it back to the picker instead of acting on stale row data.
@@ -65,7 +73,24 @@ The add flow is state-machine simple: `closed` -> `pick` -> (`enter_key` for api
 
 ## Plugin Rows
 
-After the core rows, `get_connectors()` appends one `api_key` row per loaded plugin that declares an `api_key`-kind `UserConnectionSpec` (see `config/plugin_types.py`): `label` from the manifest, `key_url`/`disconnect_url` pointing at the generic key routes (`POST /auth/service-key/{plugin id}` and `.../remove` in `auth/service_key.py`, backed by the `user_service_credentials` table -- see [Database](database.md)), `connected` from the spec's `connected` predicate over the user's stored row, `key_hint` (last 4 of the key) unless the spec sets `key_hint: False`, and `available` from the plugin's server-level configuration (`plugin_server_available()` in `config/plugins.py`) so an unconfigured plugin's row is hidden exactly like Ramp's. A plugin can supply a custom key placeholder via `UserConnectionSpec.key_placeholder`. Plugins with an `oauth`-kind connection get an `oauth` row instead: `connect_url` follows the `/auth/<plugin id>?popup=1` convention (served by the plugin's own router, mounted at startup), `connected` from the spec's predicate over the stored row's `oauth_blob`, `needs_reauth` from the spec's optional hook (e.g. the GitHub plugin's granted-scope check driving the "Update Available" badge), and the same `available` server-config gating -- the GitHub row arrives this way from `plugins/github`. The same server-AND-user combination gates every plugin's skills and tools via `get_user_connected_services()`.
+After the core rows, `get_connectors()` appends one `api_key` row per loaded plugin that declares an `api_key`-kind `UserConnectionSpec` (see `config/plugin_types.py`):
+
+- `label` from the manifest,
+- `key_url`/`disconnect_url` pointing at the generic key routes (`POST /auth/service-key/{plugin id}` and `.../remove` in `auth/service_key.py`, backed by the `user_service_credentials` table -- see [Database](database.md)),
+- `connected` from the spec's `connected` predicate over the user's stored row,
+- `key_hint` (last 4 of the key) unless the spec sets `key_hint: False`, and
+- `available` from the plugin's server-level configuration (`plugin_server_available()` in `config/plugins.py`) so an unconfigured plugin's row is hidden exactly like Ramp's.
+
+A plugin can supply a custom key placeholder via `UserConnectionSpec.key_placeholder`.
+
+Plugins with an `oauth`-kind connection get an `oauth` row instead:
+
+- `connect_url` follows the `/auth/<plugin id>?popup=1` convention (served by the plugin's own router, mounted at startup),
+- `connected` from the spec's predicate over the stored row's `oauth_blob`,
+- `needs_reauth` from the spec's optional hook (e.g. the GitHub plugin's granted-scope check driving the "Update Available" badge), and
+- the same `available` server-config gating -- the GitHub row arrives this way from `plugins/github`.
+
+The same server-AND-user combination gates every plugin's skills and tools via `get_user_connected_services()`.
 
 ## Connector-Gated Settings Sections
 

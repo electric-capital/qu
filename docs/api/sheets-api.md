@@ -38,7 +38,17 @@ The Google Sheets API does not provide a list endpoint. Listing and searching fo
 
 ## Cell Writes via Action Request (`edit_google_spreadsheet`)
 
-The agent edits spreadsheet cells by proposing an `edit_google_spreadsheet` action request (`EditGoogleSpreadsheetHandler` in `chat/action_request_types/edit_google_spreadsheet.py`), which the user approves from a card showing a spreadsheet-style diff table (row numbers, column letters, up to 2 rows/cols of surrounding context, changed cells highlighted). Params are `spreadsheet_id`, `tab`, `range` (bounded A1 rectangle, no sheet prefix; max 200 rows x 52 cols, 1000 cells), `values` (2d replacement array matching the range dimensions exactly), and `current_values` (the values the model just read from the range; the skill directs a `valueRenderOption=FORMULA` read because **formula cells must be claimed by their formula text, not their computed value**). The handler verifies `current_values` against the live sheet at proposal time (same-turn rejection with a per-cell diff, before any card/row is written) and again at Approve time, so the model can never overwrite cells -- or formulas -- it has not read, and a sheet that changed while the card sat open is not clobbered. The diff table shows formula cells by their old/new formulas and drops context rows/cols that are entirely blank. Approved writes go to `PUT /v4/spreadsheets/{id}/values/{range}?valueInputOption=USER_ENTERED`. See [Action Requests Architecture](../architecture/action-requests.md) for the full parameter, validation, and preview specification.
+The agent edits spreadsheet cells by proposing an `edit_google_spreadsheet` action request (`EditGoogleSpreadsheetHandler` in `chat/action_request_types/edit_google_spreadsheet.py`), which the user approves from a card showing a spreadsheet-style diff table (row numbers, column letters, up to 2 rows/cols of surrounding context, changed cells highlighted).
+
+Params are:
+
+- `spreadsheet_id`,
+- `tab`,
+- `range` (bounded A1 rectangle, no sheet prefix; max 200 rows x 52 cols, 1000 cells),
+- `values` (2d replacement array matching the range dimensions exactly), and
+- `current_values` (the values the model just read from the range; the skill directs a `valueRenderOption=FORMULA` read because **formula cells must be claimed by their formula text, not their computed value**).
+
+The handler verifies `current_values` against the live sheet at proposal time (same-turn rejection with a per-cell diff, before any card/row is written) and again at Approve time, so the model can never overwrite cells -- or formulas -- it has not read, and a sheet that changed while the card sat open is not clobbered. The diff table shows formula cells by their old/new formulas and drops context rows/cols that are entirely blank. Approved writes go to `PUT /v4/spreadsheets/{id}/values/{range}?valueInputOption=USER_ENTERED`. See [Action Requests Architecture](../architecture/action-requests.md) for the full parameter, validation, and preview specification.
 
 ## Design Decisions
 
