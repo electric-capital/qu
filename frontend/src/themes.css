@@ -1,0 +1,142 @@
+/* Colour themes (Settings > Appearance > Theme).
+ *
+ * A theme swaps the THEME-CONTROLLED design tokens declared on :root in
+ * index.css -- the accent family (--accent, --accent-rgb, --accent-hover,
+ * --accent-contrast, --accent-text) and the grounds (--surface for the chat
+ * area, --surface-raised for the nav sidebar / composer bubble / right-panel
+ * cards, --surface-overlay for menus) -- and may tune the neutral chrome
+ * tokens. Every theme specifies BOTH colour schemes: dark values on the
+ * bare `:root[data-color-theme=...]` selector, light values in a
+ * `prefers-color-scheme: light` block (the build-time themeOverridePlugin.ts
+ * makes that block honour the Settings > Appearance light/dark override,
+ * exactly as for component stylesheets). The values need not be the same in
+ * both schemes -- adjust them for contrast.
+ *
+ * `[data-color-theme]` selectors carry more specificity than the bare :root
+ * defaults, so a theme's dark block beats index.css's light override; the
+ * theme's own light block, later in source order, wins back in light mode.
+ *
+ * The registry the UI offers (ids, labels, swatches) lives in
+ * src/utils/colorTheme.ts and the server-side allow-list in
+ * chat/routes/user.py COLOR_THEME_CHOICES -- keep all three in step.
+ *
+ * "prototype" -- the original Quest palette (indigo accent #646cff, neutral
+ * greys). It IS the :root default token set in index.css, so it needs no
+ * overrides here; the attribute is still set so devtools show the choice.
+ */
+
+/* "electric-blue" -- Electric Capital brand palette: cyan-blue ramp
+ * (000 DAF0FC ... 500 00BBF2 ... 950 1C95C0) over a neutral grey ramp
+ * (000 F6F6F6 ... 950 161616) and white. */
+:root[data-color-theme="electric-blue"] {
+  --accent: #00bbf2;               /* blue 500 */
+  --accent-rgb: 0 187 242;
+  --accent-hover: #4cc2f4;         /* blue 400 */
+  --accent-contrast: #161616;      /* grey 950 -- dark text on the bright cyan */
+  --accent-text: #4cc2f4;          /* blue 400 */
+  --surface: #161616;              /* grey 950 -- chat ground */
+  --surface-raised: #202020;       /* between grey 950 and 900 -- sidebar, composer, right-panel cards */
+  --surface-overlay: #2a2a2a;      /* grey 900 (menus float on --shadow-menu) */
+  --text: #f6f6f6;                 /* grey 000 */
+  --text-secondary: #a4a4a4;       /* grey 400 */
+  --text-muted: #8a8a8a;           /* grey 500 */
+  --border: rgba(246, 246, 246, 0.08);
+  --border-strong: rgba(246, 246, 246, 0.16);
+}
+
+@media (prefers-color-scheme: light) {
+  :root[data-color-theme="electric-blue"] {
+    --accent: #00bbf2;             /* blue 500 -- same brand cyan as dark */
+    --accent-rgb: 0 187 242;
+    --accent-hover: #199dca;       /* blue 900 -- darkens on hover in light */
+    --accent-contrast: #161616;    /* grey 950 -- dark text on the bright cyan (white fails contrast) */
+    --accent-text: #1c95c0;        /* blue 950 -- accent as text stays the darker ramp step for legibility on white */
+    --surface: #fcfcfc;            /* near-white -- chat ground */
+    --surface-raised: #ffffff;     /* white -- sidebar, composer, right-panel cards */
+    --surface-overlay: #ffffff;
+    --text: #161616;               /* grey 950 */
+    --text-secondary: #585858;     /* grey 700 */
+    --text-muted: #8a8a8a;         /* grey 500 */
+    --border: #e2e2e2;             /* grey 150 */
+    --border-strong: #d7d7d7;      /* grey 200 */
+  }
+}
+
+/* "alloy" -- forest green + cream: deep forest-green grounds (#0b1914 ...
+ * #193224) with cream type and a cream accent fill in the dark scheme; cream
+ * paper grounds (#fffcec page, #f3efd9 band) with a forest-green accent
+ * (#326849) and warm charcoal text in the light scheme. */
+:root[data-color-theme="alloy"] {
+  --accent: #e2e5dd;               /* cream -- the hero's "Partner with us" button fill */
+  --accent-rgb: 226 229 221;
+  --accent-hover: #fffcec;         /* brand cream -- brighter on hover */
+  --accent-contrast: #0b1914;      /* forest -- dark text on the cream fill */
+  --accent-text: #9fcdb2;          /* pale sage -- accent as text/links on forest */
+  --surface: #0b1914;              /* hero forest -- chat ground */
+  --surface-raised: #11251b;       /* hero mid-tone -- sidebar, composer, right-panel cards */
+  --surface-overlay: #193224;      /* hero highlight -- menus float on --shadow-menu */
+  --text: #f4f2e2;                 /* hero body copy */
+  --text-secondary: #c1c3b6;       /* hero eyebrow */
+  --text-muted: #8f978c;
+  --hover: rgba(244, 242, 226, 0.06);
+  --pressed: rgba(244, 242, 226, 0.1);
+  --border: rgba(244, 242, 226, 0.08);
+  --border-strong: rgba(244, 242, 226, 0.16);
+}
+
+@media (prefers-color-scheme: light) {
+  :root[data-color-theme="alloy"] {
+    --accent: #326849;             /* forest green -- the stat figures */
+    --accent-rgb: 50 104 73;
+    --accent-hover: #3d7a56;
+    --accent-contrast: #fffcec;    /* cream text on the green fill */
+    --accent-text: #2b6343;
+    --surface: #fffcec;            /* page cream -- chat ground */
+    --surface-raised: #f6f3e1;     /* between page cream and the #f3efd9 band -- sidebar, composer, cards */
+    --surface-overlay: #fffdf2;
+    --text: #191a1e;               /* headline charcoal */
+    --text-secondary: #3f403d;     /* body copy */
+    --text-muted: #5d5e57;         /* eyebrow labels */
+    --hover: rgba(25, 26, 30, 0.04);
+    --pressed: rgba(25, 26, 30, 0.07);
+    --border: #dcdad0;             /* stat-card border */
+    --border-strong: #cfcdc0;
+  }
+}
+
+/* "recall" -- sage mint on near-black: a sage-mint accent (#8DB5AC, dark type
+ * on it) over a near-black ground (#111111) with faintly green-tinted raised
+ * surfaces (#1E2221) and white type. */
+:root[data-color-theme="recall"] {
+  --accent: #8db5ac;               /* sage mint */
+  --accent-rgb: 141 181 172;
+  --accent-hover: #a3c6be;         /* lighter sage */
+  --accent-contrast: #111111;      /* near-black type on the pale accent, as on the disc */
+  --accent-text: #9fc3ba;          /* sage as text on the dark ground */
+  --surface: #111111;              /* near-black -- chat ground */
+  --surface-raised: #1a1d1c;       /* green-tinted charcoal -- sidebar, composer, right-panel cards */
+  --surface-overlay: #242827;      /* the APY pill tone, one step lighter (menus) */
+  --text: #f4f6f5;
+  --text-secondary: #a3a8a6;
+  --text-muted: #7f8583;
+  --border: rgba(244, 246, 245, 0.08);
+  --border-strong: rgba(244, 246, 245, 0.16);
+}
+
+@media (prefers-color-scheme: light) {
+  :root[data-color-theme="recall"] {
+    --accent: #4f7d72;             /* deepened sage for contrast on white */
+    --accent-rgb: 79 125 114;
+    --accent-hover: #467065;
+    --accent-contrast: #ffffff;
+    --accent-text: #3f6a60;
+    --surface: #f5f8f7;            /* mint-tinted off-white -- chat ground */
+    --surface-raised: #ffffff;     /* white -- sidebar, composer, right-panel cards */
+    --surface-overlay: #ffffff;
+    --text: #111111;
+    --text-secondary: #5a605e;
+    --text-muted: #858b89;
+    --border: #e1e6e4;
+    --border-strong: #d2d9d6;
+  }
+}

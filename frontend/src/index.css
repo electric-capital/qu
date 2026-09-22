@@ -1,0 +1,129 @@
+:root {
+  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', 'Cascadia Code', 'Consolas', 'Monaco', monospace;
+  line-height: 1.5;
+  font-weight: 400;
+
+  color-scheme: light dark;
+
+  /* Design tokens. Dark values live on :root; the light block below overrides
+     them so components can stay palette-agnostic.
+
+     The THEME-CONTROLLED tokens (accent family + the two grounds) are the
+     values a colour theme (Settings > Appearance > Theme, <html
+     data-color-theme>) swaps out. The defaults on :root ARE the "prototype"
+     theme; every other theme overrides them in src/themes.css for both
+     colour schemes. Everything else here is neutral chrome a theme may
+     optionally tune. */
+
+  /* -- theme-controlled: accent ---------------------------------------- */
+  --accent: #646cff;               /* solid accent: buttons, active states, links */
+  --accent-rgb: 100 108 255;       /* same colour as space-separated RGB for alpha tints:
+                                      rgb(var(--accent-rgb) / 0.1) */
+  --accent-hover: #535bf2;         /* hover state of a solid --accent fill */
+  --accent-contrast: #ffffff;      /* text / icons drawn on a solid --accent fill */
+  --accent-text: #8b92ff;          /* accent used as TEXT on the ground (contrast-tuned per scheme) */
+  /* -- theme-controlled: grounds --------------------------------------- */
+  --surface: #1f1f1f;              /* main chat / content ground */
+  --surface-raised: #282828;       /* nav sidebar, composer bubble, right-panel cards */
+  --surface-overlay: #2e2e2e;      /* menus, popovers */
+  /* -- neutral chrome --------------------------------------------------- */
+  --text: rgba(255, 255, 255, 0.9);
+  --text-secondary: rgba(255, 255, 255, 0.62);
+  --text-muted: rgba(255, 255, 255, 0.42);
+  --hover: rgba(255, 255, 255, 0.06);
+  --pressed: rgba(255, 255, 255, 0.1);
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.14);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.32);
+  --shadow-menu: 0 4px 12px rgba(0, 0, 0, 0.3);
+  /* -- derived accent tints (follow the accent automatically) ------------ */
+  --accent-soft: rgb(var(--accent-rgb) / 0.14);
+  --logo-grad-from: color-mix(in srgb, var(--accent), #000 6%); /* QuestLogo diagonal wash: darker top-left stop... */
+  --logo-grad-to: color-mix(in srgb, var(--accent), #fff 12%);  /* ...lifting toward the bottom-right accent wedge */
+  --accent-tint: rgb(var(--accent-rgb) / 0.3);         /* filled-but-light accent: user bubbles, upload button */
+  --accent-tint-strong: rgb(var(--accent-rgb) / 0.42); /* hover state for --accent-tint fills */
+
+  color: var(--text);
+  background-color: var(--surface);
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Settings > Appearance override. src/utils/theme.ts sets <html data-theme>
+   to "light" or "dark" (absent = auto/follow the OS); the build-time
+   themeOverridePlugin.ts rewrites every prefers-color-scheme media block to
+   honour it, and these rules keep native form controls and scrollbars in
+   step with the forced scheme. */
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+a {
+  font-weight: 500;
+  color: var(--accent);
+  text-decoration: inherit;
+}
+a:hover {
+  color: var(--accent-hover);
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+h1 {
+  font-size: 3.2em;
+  line-height: 1.1;
+}
+
+button {
+  border-radius: 8px;
+  border: 1px solid transparent;
+  padding: 0.6em 1.2em;
+  font-size: 1em;
+  font-weight: 500;
+  font-family: inherit;
+  background-color: #1a1a1a;
+  cursor: pointer;
+  transition: border-color 0.25s;
+}
+button:hover {
+  border-color: var(--accent);
+}
+button:focus,
+button:focus-visible {
+  outline: 4px auto -webkit-focus-ring-color;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --surface: #ffffff;
+    --surface-raised: #ffffff;
+    --surface-overlay: #ffffff;
+    --text: #1c1c1e;
+    --text-secondary: rgba(0, 0, 0, 0.6);
+    --text-muted: rgba(0, 0, 0, 0.42);
+    --hover: rgba(0, 0, 0, 0.04);
+    --pressed: rgba(0, 0, 0, 0.07);
+    --border: rgba(0, 0, 0, 0.07);
+    --border-strong: rgba(0, 0, 0, 0.12);
+    --accent-text: #4a50d9;
+    --accent-soft: rgb(var(--accent-rgb) / 0.12);
+    --accent-tint: rgb(var(--accent-rgb) / 0.18);
+    --accent-tint-strong: rgb(var(--accent-rgb) / 0.28);
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.05), 0 8px 24px rgba(0, 0, 0, 0.07);
+    --shadow-menu: 0 4px 12px rgba(0, 0, 0, 0.12);
+  }
+  button {
+    background-color: #f9f9f9;
+  }
+}

@@ -1,0 +1,562 @@
+/* Settings modal. Every colour comes from the design tokens in index.css so
+   the Settings > Appearance colour theme (src/themes.css) styles this screen
+   too: the modal sits on --surface, inputs / cards on --surface-raised, and
+   text / borders / hover states use the neutral chrome tokens. Only the
+   semantic status colours (saved green, error red, archive amber) are
+   literal, so the light-mode block below is limited to those. */
+
+/* Settings overlay */
+.settings-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.15s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Modal container */
+.settings-modal {
+  background-color: var(--surface);
+  color: var(--text);
+  border-radius: 12px;
+  width: 80vw;
+  height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-card);
+  animation: slideUp 0.15s ease-out;
+}
+
+@keyframes slideUp {
+  from { transform: translateY(8px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+/* Header */
+.settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-header h2 {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.settings-close-button {
+  background: none;
+  border: none;
+  padding: 0.25rem;
+  cursor: pointer;
+  color: var(--text-muted);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s, background-color 0.15s;
+}
+
+.settings-close-button:hover {
+  color: var(--text);
+  background-color: var(--hover);
+}
+
+/* Body with left nav + content */
+.settings-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Left navigation */
+.settings-nav {
+  width: 180px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.settings-nav-top {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.settings-nav-bottom {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.settings-nav-section-header {
+  margin-top: 0.75rem;
+  padding: 0 0.75rem 0.25rem;
+  border-top: 1px solid var(--border);
+  padding-top: 0.75rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.settings-nav-item {
+  background: none;
+  border: none;
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  cursor: pointer;
+  color: var(--text-secondary);
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-family: inherit;
+  transition: color 0.15s, background-color 0.15s;
+}
+
+.settings-nav-item:hover {
+  color: var(--text);
+  background-color: var(--hover);
+}
+
+.settings-nav-item.active {
+  color: var(--text);
+  background-color: var(--accent-soft);
+}
+
+/* Sign Out is a nav item too; these come AFTER .settings-nav-item so the
+   red wins at equal specificity in both colour schemes. */
+.settings-nav-signout {
+  color: rgba(255, 100, 100, 0.7);
+}
+
+.settings-nav-signout:hover {
+  color: rgba(255, 100, 100, 0.9);
+  background-color: rgba(255, 100, 100, 0.1);
+}
+
+.settings-nav-signout.active {
+  color: rgba(255, 100, 100, 0.9);
+  background-color: rgba(255, 100, 100, 0.15);
+}
+
+/* Content area */
+.settings-content {
+  flex: 1;
+  padding: 1.5rem;
+  overflow-y: auto;
+  min-width: 0;
+}
+
+.settings-loading {
+  color: var(--text-muted);
+  text-align: center;
+  padding: 2rem;
+}
+
+/* Section shared styles */
+.settings-section h3 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.settings-description {
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  margin: 0 0 1rem 0;
+}
+
+.settings-textarea {
+  width: 100%;
+  padding: 0.75rem;
+  font-size: 0.875rem;
+  font-family: inherit;
+  line-height: 1.5;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background-color: var(--surface-raised);
+  color: var(--text);
+  resize: vertical;
+  min-height: 120px;
+  box-sizing: border-box;
+}
+
+.settings-textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.settings-textarea::placeholder {
+  color: var(--text-muted);
+}
+
+/* Actions */
+.settings-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.settings-save-button {
+  padding: 0.5rem 1.25rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border-radius: 6px;
+  border: none;
+  background-color: var(--accent);
+  color: var(--accent-contrast);
+  cursor: pointer;
+  transition: background-color 0.15s;
+  font-family: inherit;
+}
+
+.settings-save-button:hover:not(:disabled) {
+  background-color: var(--accent-hover);
+}
+
+.settings-save-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.settings-save-status {
+  font-size: 0.8125rem;
+}
+
+.settings-save-status.saved {
+  color: #4caf50;
+}
+
+.settings-save-status.error {
+  color: #ff6b6b;
+}
+
+/* Shared card/button styles used across sections (memories, guides, skills) */
+.memories-create-btn {
+  padding: 0.375rem 0.875rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  font-family: inherit;
+  border-radius: 6px;
+  border: none;
+  background-color: var(--accent);
+  color: var(--accent-contrast);
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.memories-create-btn:hover:not(:disabled) {
+  background-color: var(--accent-hover);
+}
+
+.memories-create-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.memories-empty {
+  color: var(--text-muted);
+  text-align: center;
+  padding: 2rem;
+  font-size: 0.875rem;
+}
+
+.memory-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.875rem;
+  background-color: var(--surface-raised);
+  transition: border-color 0.15s;
+}
+
+.memory-card:hover {
+  border-color: var(--border-strong);
+}
+
+.memory-card-editing {
+  border-color: var(--accent);
+}
+
+.memory-card-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.memory-btn {
+  padding: 0.25rem 0.625rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  font-family: inherit;
+  border-radius: 4px;
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.memory-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.memory-btn-save {
+  background-color: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.memory-btn-save:hover:not(:disabled) {
+  background-color: var(--accent-hover);
+}
+
+.memory-btn-cancel {
+  background-color: var(--hover);
+  color: var(--text-secondary);
+}
+
+.memory-btn-cancel:hover {
+  background-color: var(--pressed);
+}
+
+.memory-btn-edit {
+  background-color: var(--hover);
+  color: var(--text-secondary);
+}
+
+.memory-btn-edit:hover {
+  background-color: var(--pressed);
+}
+
+.memory-btn-archive {
+  background-color: rgba(255, 193, 7, 0.1);
+  color: #ffc107;
+}
+
+.memory-btn-archive:hover {
+  background-color: rgba(255, 193, 7, 0.2);
+}
+
+.memory-btn-unarchive {
+  background-color: rgba(76, 175, 80, 0.1);
+  color: #4caf50;
+}
+
+.memory-btn-unarchive:hover {
+  background-color: rgba(76, 175, 80, 0.2);
+}
+
+.memory-btn-delete {
+  background-color: rgba(220, 53, 69, 0.1);
+  color: #ff6b6b;
+}
+
+.memory-btn-delete:hover {
+  background-color: rgba(220, 53, 69, 0.2);
+}
+
+.memory-edit-textarea {
+  width: 100%;
+  padding: 0.625rem;
+  font-size: 0.8125rem;
+  font-family: inherit;
+  line-height: 1.5;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background-color: var(--surface-raised);
+  color: var(--text);
+  resize: vertical;
+  min-height: 80px;
+  box-sizing: border-box;
+}
+
+.memory-edit-textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.memory-edit-textarea::placeholder {
+  color: var(--text-muted);
+}
+
+/* Shared guide-name-input used by guides and skills */
+.guide-name-input {
+  width: 100%;
+  padding: 0.5rem 0.625rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  font-family: inherit;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background-color: var(--surface-raised);
+  color: var(--text);
+  margin-bottom: 0.5rem;
+  box-sizing: border-box;
+}
+
+.guide-name-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.guide-name-input::placeholder {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+/* Shared guide-card-preview used by guides and skills */
+.guide-card-preview {
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin-bottom: 0.5rem;
+}
+
+.guide-empty-hint {
+  font-style: italic;
+  color: var(--text-muted);
+}
+
+/* Mobile: full-screen takeover with a two-tier drill-in nav.
+   Scoped by class (set from the useIsMobile hook) rather than a media query so
+   the JS breakpoint stays the single source of truth. */
+.settings-overlay-mobile {
+  align-items: stretch;
+  justify-content: stretch;
+}
+
+.settings-modal-mobile {
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* iOS auto-zoom guard: the modal is portaled to document.body, outside
+   .mobile-shell, so mirror its 16px form-control rule here. */
+.settings-modal-mobile input,
+.settings-modal-mobile textarea,
+.settings-modal-mobile select {
+  font-size: 16px;
+}
+
+.settings-modal-mobile .settings-header {
+  gap: 0.5rem;
+}
+
+.settings-modal-mobile .settings-header h2 {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-back-button {
+  background: none;
+  border: none;
+  padding: 0.25rem;
+  cursor: pointer;
+  color: var(--text-muted);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* First tier: the nav list fills the screen */
+.settings-modal-mobile .settings-body {
+  position: relative;
+}
+
+.settings-modal-mobile .settings-nav {
+  width: 100%;
+  box-sizing: border-box;
+  border-right: none;
+  padding: 0.75rem 1rem;
+  overflow-y: auto;
+}
+
+.settings-modal-mobile .settings-nav-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  font-size: 1rem;
+}
+
+.settings-nav-chevron {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+/* Second tier: the section content slides over the nav list */
+.settings-modal-mobile .settings-content {
+  position: absolute;
+  inset: 0;
+  background-color: var(--surface);
+  padding: 1rem;
+  transform: translateX(100%);
+  visibility: hidden;
+  transition: transform 0.25s ease, visibility 0s linear 0.25s;
+}
+
+.settings-modal-mobile.settings-mobile-section-open .settings-content {
+  transform: translateX(0);
+  visibility: visible;
+  transition: transform 0.25s ease;
+}
+
+/* About sits after every other top-group section, separated by a hairline */
+.settings-nav-about {
+  margin-top: 0.75rem;
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 6px 6px;
+  padding-top: 0.75rem;
+}
+
+/* Light mode: only the literal semantic status colours need a darker,
+   higher-contrast variant on light grounds. Everything else follows the
+   tokens. */
+@media (prefers-color-scheme: light) {
+  .settings-overlay {
+    background-color: rgba(0, 0, 0, 0.4);
+  }
+
+  .settings-nav-signout { color: rgba(220, 53, 69, 0.7); }
+  .settings-nav-signout:hover { color: rgba(220, 53, 69, 0.9); background-color: rgba(220, 53, 69, 0.08); }
+  .settings-nav-signout.active { color: rgba(220, 53, 69, 0.9); background-color: rgba(220, 53, 69, 0.1); }
+
+  .settings-save-status.error {
+    color: #d32f2f;
+  }
+
+  .memory-btn-archive { background-color: rgba(255, 193, 7, 0.08); color: #e69500; }
+  .memory-btn-unarchive { background-color: rgba(76, 175, 80, 0.08); color: #388e3c; }
+  .memory-btn-delete { background-color: rgba(220, 53, 69, 0.08); color: #d32f2f; }
+}

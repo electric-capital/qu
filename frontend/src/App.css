@@ -1,0 +1,140 @@
+#root {
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  text-align: left;
+}
+
+/* App container with flex layout */
+.app-container {
+  display: flex;
+  flex-direction: row;
+  height: 100vh;
+  width: 100%;
+}
+
+/* Main content area */
+.main-content {
+  flex: 1;
+  display: flex;
+  align-items: stretch;
+  justify-content: stretch;
+  min-width: 0; /* Allow flex item to shrink below content size */
+}
+
+/* Center content when no conversation is selected */
+.main-content .no-conversation-selected {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* API key form container */
+.api-key-form-container {
+  max-width: 400px;
+  margin: 0 auto;
+  padding: 2rem;
+  text-align: center;
+}
+
+.api-key-form-container h1 {
+  font-size: 2rem;
+  margin-bottom: 0.5rem;
+  color: rgba(255, 255, 255, 0.87);
+}
+
+.api-key-form-container > p {
+  color: rgba(255, 255, 255, 0.6);
+  margin-bottom: 1.5rem;
+}
+
+.api-key-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.api-key-input {
+  padding: 0.75rem 1rem;
+  font-size: 1rem;
+  border: 1px solid #444;
+  border-radius: 8px;
+  background-color: #2a2a2a;
+  color: rgba(255, 255, 255, 0.87);
+  font-family: inherit;
+}
+
+.api-key-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.api-key-input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.api-key-submit {
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  font-weight: 500;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background-color: var(--accent);
+  color: var(--accent-contrast);
+  cursor: pointer;
+  transition: background-color 0.25s;
+  font-family: inherit;
+}
+
+.api-key-submit:hover {
+  background-color: var(--accent-hover);
+}
+
+.api-key-help {
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.4);
+  line-height: 1.4;
+}
+
+/* No conversation selected state */
+.no-conversation-selected {
+  text-align: center;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+/* Chat placeholder */
+.chat-placeholder {
+  text-align: center;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+@media (prefers-color-scheme: light) {
+  .api-key-form-container h1 {
+    color: #213547;
+  }
+
+  .api-key-form-container > p {
+    color: rgba(0, 0, 0, 0.6);
+  }
+
+  .api-key-input {
+    background-color: #ffffff;
+    border-color: #d0d0d0;
+    color: #213547;
+  }
+
+  .api-key-input::placeholder {
+    color: rgba(0, 0, 0, 0.4);
+  }
+
+  .api-key-help {
+    color: rgba(0, 0, 0, 0.5);
+  }
+
+  .no-conversation-selected,
+  .chat-placeholder {
+    color: rgba(0, 0, 0, 0.6);
+  }
+}

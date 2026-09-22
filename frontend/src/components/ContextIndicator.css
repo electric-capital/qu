@@ -1,0 +1,95 @@
+.context-indicator-container {
+  margin-left: auto;
+  position: relative;
+  cursor: default;
+}
+
+.context-indicator-badge {
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.45);
+  letter-spacing: 0.02em;
+}
+
+/* Color levels */
+.context-indicator-badge.context-normal {
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.context-indicator-badge.context-warning {
+  color: #f0ad4e;
+}
+
+.context-indicator-badge.context-danger {
+  color: #ff6b6b;
+}
+
+/* Info button */
+.context-indicator-info-button {
+  background: none;
+  border: none;
+  padding: 0 2px;
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.45);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s;
+  vertical-align: middle;
+}
+
+.context-indicator-info-button:hover {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* Tooltip on hover */
+.context-indicator-tooltip {
+  visibility: hidden;
+  opacity: 0;
+  position: absolute;
+  bottom: calc(100% + 6px);
+  right: 0;
+  background-color: rgba(30, 30, 30, 0.97);
+  color: rgba(255, 255, 255, 0.75);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  white-space: nowrap;
+  pointer-events: none;
+  transition: opacity 0.15s ease-in-out, visibility 0.15s ease-in-out;
+  z-index: 10;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.context-indicator-container:hover .context-indicator-tooltip {
+  visibility: visible;
+  opacity: 1;
+}
+
+/* Light mode support */
+@media (prefers-color-scheme: light) {
+  .context-indicator-badge.context-normal {
+    color: rgba(0, 0, 0, 0.45);
+  }
+
+  .context-indicator-badge.context-warning {
+    color: #b8860b;
+  }
+
+  .context-indicator-badge.context-danger {
+    color: #d32f2f;
+  }
+
+  .context-indicator-info-button {
+    color: rgba(0, 0, 0, 0.45);
+  }
+
+  .context-indicator-info-button:hover {
+    color: rgba(0, 0, 0, 0.7);
+  }
+
+  .context-indicator-tooltip {
+    background-color: rgba(240, 240, 240, 0.97);
+    color: rgba(0, 0, 0, 0.75);
+    border: 1px solid rgba(0, 0, 0, 0.1);
+  }
+}

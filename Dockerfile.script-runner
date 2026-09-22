@@ -1,0 +1,20 @@
+FROM python:3.12-slim
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends curl jq bash socat iptables zip unzip && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir requests openpyxl python-docx matplotlib seaborn pypdf PyPDFForm
+
+ENV MPLBACKEND=Agg
+
+# Entrypoint script that starts a socat forwarder so scripts can reach
+# the host API proxy at localhost:8000 (forwarded to 10.0.2.2:8000 via
+# slirp4netns), then execs the user's command.
+COPY script-runner-entry.sh /usr/local/bin/script-runner-entry.sh
+RUN chmod +x /usr/local/bin/script-runner-entry.sh
+
+WORKDIR /workspace
+
+ENTRYPOINT ["/usr/local/bin/script-runner-entry.sh"]
+CMD ["python3"]

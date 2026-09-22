@@ -1,0 +1,216 @@
+/* JSON Tree Viewer -- dark mode (default) */
+
+.json-tree-viewer {
+  margin: 0;
+  padding: 1.25rem 1.5rem;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.87);
+  background-color: #222222;
+  min-height: 100%;
+  box-sizing: border-box;
+  overflow-x: auto;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Nodes                                                             */
+/* ------------------------------------------------------------------ */
+
+.json-node-primitive {
+  padding-left: 1.25rem;
+}
+
+.json-node-primitive:hover {
+  background-color: rgba(255, 255, 255, 0.04);
+  border-radius: 3px;
+}
+
+.json-node-compound > .json-node-header {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: baseline;
+  padding-left: 0;
+}
+
+.json-node-compound > .json-node-header:hover {
+  background-color: rgba(255, 255, 255, 0.04);
+  border-radius: 3px;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Toggle arrow                                                      */
+/* ------------------------------------------------------------------ */
+
+.json-toggle {
+  display: inline-block;
+  width: 1rem;
+  height: 1rem;
+  flex-shrink: 0;
+  position: relative;
+  top: 0.125rem;
+  margin-right: 0.125rem;
+}
+
+.json-toggle::before {
+  content: '';
+  display: block;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  transition: transform 0.1s ease;
+}
+
+.json-toggle-collapsed::before {
+  border-width: 4px 0 4px 6px;
+  border-color: transparent transparent transparent rgba(255, 255, 255, 0.45);
+  margin-top: 4px;
+  margin-left: 4px;
+}
+
+.json-toggle-expanded::before {
+  border-width: 6px 4px 0 4px;
+  border-color: rgba(255, 255, 255, 0.45) transparent transparent transparent;
+  margin-top: 5px;
+  margin-left: 2px;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Children indentation with guide line                              */
+/* ------------------------------------------------------------------ */
+
+.json-children {
+  padding-left: 1.25rem;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  margin-left: 0.4375rem;
+}
+
+.json-node-footer {
+  padding-left: 0;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Syntax colors -- dark mode                                        */
+/* ------------------------------------------------------------------ */
+
+/* Keys: bright orange (matches hljs-attr in Message.css) */
+.json-key {
+  color: #ffb86c;
+}
+
+.json-colon {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+/* String values: bright green (matches hljs-string) */
+.json-string {
+  color: #50fa7b;
+}
+
+/* Number values: cyan */
+.json-number {
+  color: #8be9fd;
+}
+
+/* Boolean values: bright pink (matches hljs-keyword) */
+.json-boolean {
+  color: #ff79c6;
+}
+
+/* null: bright pink */
+.json-null {
+  color: #ff79c6;
+}
+
+/* Structural punctuation */
+.json-bracket {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.json-comma {
+  color: rgba(255, 255, 255, 0.45);
+}
+
+/* Collapsed badge */
+.json-badge {
+  display: inline-block;
+  margin: 0 0.375rem;
+  padding: 0 0.375rem;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.4);
+  background-color: rgba(255, 255, 255, 0.06);
+  border-radius: 3px;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Light mode                                                        */
+/* ------------------------------------------------------------------ */
+
+@media (prefers-color-scheme: light) {
+  .json-tree-viewer {
+    color: #1a1a1a;
+    background-color: #f5f5f5;
+  }
+
+  .json-node-primitive:hover {
+    background-color: rgba(0, 0, 0, 0.04);
+  }
+
+  .json-node-compound > .json-node-header:hover {
+    background-color: rgba(0, 0, 0, 0.04);
+  }
+
+  .json-toggle-collapsed::before {
+    border-color: transparent transparent transparent rgba(0, 0, 0, 0.4);
+  }
+
+  .json-toggle-expanded::before {
+    border-color: rgba(0, 0, 0, 0.4) transparent transparent transparent;
+  }
+
+  .json-children {
+    border-left-color: rgba(0, 0, 0, 0.1);
+  }
+
+  /* Keys: orange (matches hljs-attr light) */
+  .json-key {
+    color: #e36209;
+  }
+
+  .json-colon {
+    color: rgba(0, 0, 0, 0.55);
+  }
+
+  /* String values: dark green (matches hljs-string light) */
+  .json-string {
+    color: #22863a;
+  }
+
+  /* Number values: blue (matches hljs-number light) */
+  .json-number {
+    color: #005cc5;
+  }
+
+  /* Boolean values: red (matches hljs-keyword light) */
+  .json-boolean {
+    color: #d73a49;
+  }
+
+  .json-null {
+    color: #d73a49;
+  }
+
+  .json-bracket {
+    color: rgba(0, 0, 0, 0.55);
+  }
+
+  .json-comma {
+    color: rgba(0, 0, 0, 0.35);
+  }
+
+  .json-badge {
+    color: rgba(0, 0, 0, 0.4);
+    background-color: rgba(0, 0, 0, 0.06);
+  }
+}

@@ -1,0 +1,188 @@
+/* Spreadsheet diff table shown inside edit_spreadsheet approval cards. */
+
+/* The generic preview fields are flex rows (key left, value right); the
+   diff table needs the full card width, so its field stacks instead.
+   Applies to both the chat card and the Requests pane variants. */
+.action-request-preview-field.sheet-diff-field,
+.request-preview-field.sheet-diff-field {
+  display: block;
+  min-width: 0;
+}
+
+.sheet-diff-scroll {
+  overflow-x: auto;
+  margin-top: 0.5rem;
+  max-width: 100%;
+}
+
+.sheet-diff-table {
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.sheet-diff-table th,
+.sheet-diff-table td {
+  border: 1px solid #3a3a6a;
+  padding: 0.25rem 0.5rem;
+  text-align: left;
+  white-space: nowrap;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Row-number / column-letter headers, spreadsheet-style. */
+.sheet-diff-corner,
+.sheet-diff-col-label,
+.sheet-diff-row-label {
+  background-color: #24244a;
+  color: rgba(255, 255, 255, 0.55);
+  font-weight: 600;
+  font-family: inherit;
+  text-align: center;
+  position: sticky;
+}
+
+.sheet-diff-row-label {
+  left: 0;
+  z-index: 1;
+}
+
+.sheet-diff-corner {
+  left: 0;
+  z-index: 2;
+}
+
+.sheet-diff-col-label.in-target,
+.sheet-diff-row-label.in-target {
+  color: #a0a0ff;
+  background-color: #2c2c5e;
+}
+
+/* Cells outside the replaced range: read-only context. */
+.sheet-diff-cell.context {
+  color: rgba(255, 255, 255, 0.45);
+  background-color: rgba(255, 255, 255, 0.02);
+}
+
+/* Cells inside the replaced range whose value is not actually changing. */
+.sheet-diff-cell.target.unchanged {
+  color: rgba(255, 255, 255, 0.75);
+  background-color: rgb(var(--accent-rgb) / 0.08);
+}
+
+/* Cells whose value changes: old value struck through, new value green. */
+.sheet-diff-cell.target.changed {
+  background-color: rgba(80, 200, 120, 0.12);
+}
+
+.sheet-diff-old {
+  color: rgba(255, 120, 120, 0.85);
+  text-decoration: line-through;
+  margin-right: 0.5rem;
+}
+
+.sheet-diff-new {
+  color: #7fdc9a;
+  font-weight: 600;
+}
+
+/* Legend under the table. */
+.sheet-diff-legend {
+  display: flex;
+  gap: 1rem;
+  margin-top: 0.4rem;
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.sheet-diff-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.sheet-diff-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  border: 1px solid #3a3a6a;
+}
+
+.sheet-diff-swatch.changed {
+  background-color: rgba(80, 200, 120, 0.35);
+}
+
+.sheet-diff-swatch.unchanged {
+  background-color: rgb(var(--accent-rgb) / 0.25);
+}
+
+.sheet-diff-swatch.context {
+  background-color: rgba(255, 255, 255, 0.06);
+}
+
+/* Light mode support (base styles above are dark-first, matching
+   ActionRequestMessage.css / RequestsView.css). */
+@media (prefers-color-scheme: light) {
+  .sheet-diff-table th,
+  .sheet-diff-table td {
+    border-color: #d8d8e4;
+  }
+
+  .sheet-diff-corner,
+  .sheet-diff-col-label,
+  .sheet-diff-row-label {
+    background-color: #ececf4;
+    color: rgba(0, 0, 0, 0.55);
+  }
+
+  .sheet-diff-col-label.in-target,
+  .sheet-diff-row-label.in-target {
+    color: #4a4ac0;
+    background-color: #dcdcf0;
+  }
+
+  .sheet-diff-cell.context {
+    color: rgba(0, 0, 0, 0.45);
+    background-color: rgba(0, 0, 0, 0.02);
+  }
+
+  .sheet-diff-cell.target.unchanged {
+    color: rgba(0, 0, 0, 0.75);
+    background-color: rgb(var(--accent-rgb) / 0.08);
+  }
+
+  .sheet-diff-cell.target.changed {
+    background-color: rgba(26, 127, 55, 0.08);
+  }
+
+  .sheet-diff-old {
+    color: #c03030;
+  }
+
+  .sheet-diff-new {
+    color: #1a7f37;
+  }
+
+  .sheet-diff-legend {
+    color: rgba(0, 0, 0, 0.5);
+  }
+
+  .sheet-diff-swatch {
+    border-color: #d8d8e4;
+  }
+
+  .sheet-diff-swatch.changed {
+    background-color: rgba(26, 127, 55, 0.25);
+  }
+
+  .sheet-diff-swatch.unchanged {
+    background-color: rgb(var(--accent-rgb) / 0.2);
+  }
+
+  .sheet-diff-swatch.context {
+    background-color: rgba(0, 0, 0, 0.05);
+  }
+}

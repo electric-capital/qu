@@ -1,0 +1,713 @@
+/* Routine Settings Modal overlay */
+.routine-settings-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.15s ease-out;
+}
+
+/* Modal container */
+.routine-settings-modal {
+  background-color: #2a2a2a;
+  border-radius: 12px;
+  width: 720px;
+  max-width: 90vw;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  animation: slideUp 0.15s ease-out;
+}
+
+/* Header */
+.routine-settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  flex-shrink: 0;
+}
+
+.routine-settings-header h2 {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.routine-settings-close-button {
+  background: none;
+  border: none;
+  padding: 0.25rem;
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.5);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s, background-color 0.15s;
+}
+
+.routine-settings-close-button:hover {
+  color: rgba(255, 255, 255, 0.87);
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Body with left nav + content */
+.routine-settings-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Left navigation */
+.routine-settings-nav {
+  width: 140px;
+  flex-shrink: 0;
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.routine-settings-nav-top {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.routine-settings-nav-bottom {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.routine-settings-nav-item {
+  background: none;
+  border: none;
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.6);
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-family: inherit;
+  transition: color 0.15s, background-color 0.15s;
+}
+
+.routine-settings-nav-item:hover {
+  color: rgba(255, 255, 255, 0.87);
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.routine-settings-nav-item.active {
+  color: rgba(255, 255, 255, 0.87);
+  background-color: rgb(var(--accent-rgb) / 0.15);
+}
+
+/* Danger nav item */
+.routine-settings-nav-danger {
+  color: rgba(255, 100, 100, 0.7);
+}
+
+.routine-settings-nav-danger:hover {
+  color: rgba(255, 100, 100, 0.9);
+  background-color: rgba(255, 100, 100, 0.1);
+}
+
+.routine-settings-nav-danger.active {
+  color: rgba(255, 100, 100, 0.9);
+  background-color: rgba(255, 100, 100, 0.15);
+}
+
+/* Scrollable content area */
+.routine-settings-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.5rem;
+  min-height: 0;
+  min-width: 0;
+}
+
+.routine-settings-loading {
+  text-align: center;
+  color: rgba(255, 255, 255, 0.6);
+  padding: 0.5rem 0;
+  font-size: 0.8125rem;
+}
+
+.routine-settings-field {
+  margin-bottom: 1.25rem;
+}
+
+.routine-settings-label {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 500;
+  margin-bottom: 0.5rem;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.routine-settings-label-hint {
+  display: block;
+  font-weight: 400;
+  font-size: 0.8125rem;
+  color: rgba(255, 255, 255, 0.5);
+  margin-top: 0.25rem;
+}
+
+.routine-settings-input {
+  width: 100%;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  background-color: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.87);
+  font-size: 0.9375rem;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+}
+
+.routine-settings-input:focus {
+  border-color: var(--accent);
+}
+
+.routine-settings-input:disabled {
+  opacity: 0.6;
+}
+
+.routine-settings-textarea {
+  width: 100%;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  background-color: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.87);
+  font-size: 0.875rem;
+  font-family: inherit;
+  outline: none;
+  resize: none;
+  min-height: 80px;
+  max-height: 420px;
+  overflow-y: auto;
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+  line-height: 1.5;
+}
+
+.routine-settings-textarea:focus {
+  border-color: var(--accent);
+}
+
+.routine-settings-textarea:disabled {
+  opacity: 0.6;
+}
+
+.routine-settings-select {
+  width: 100%;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  background-color: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.87);
+  font-size: 0.875rem;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+  cursor: pointer;
+}
+
+.routine-settings-select:focus {
+  border-color: var(--accent);
+}
+
+.routine-settings-select:disabled {
+  opacity: 0.6;
+}
+
+/* Read-only display for a leftover (deprecated) guide attachment */
+.routine-settings-guide-readonly {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  background-color: rgba(255, 255, 255, 0.05);
+  box-sizing: border-box;
+}
+
+.routine-settings-guide-name {
+  color: rgba(255, 255, 255, 0.87);
+  font-size: 0.875rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.routine-settings-guide-clear-button {
+  padding: 0.25rem 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  background: none;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.8125rem;
+  cursor: pointer;
+  transition: background-color 0.15s;
+  flex-shrink: 0;
+}
+
+.routine-settings-guide-clear-button:hover:not(:disabled) {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.routine-settings-guide-clear-button:disabled {
+  opacity: 0.6;
+}
+
+/* Schedule fields wrapper -- grayed out when schedule is disabled */
+.routine-settings-schedule-fields {
+  transition: opacity 0.15s;
+}
+
+.routine-settings-schedule-fields.disabled {
+  opacity: 0.45;
+}
+
+.routine-settings-schedule-fields.disabled .routine-settings-label {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.routine-settings-last-run {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.5);
+  margin-top: 0.5rem;
+}
+
+/* Error */
+.routine-settings-error {
+  margin-bottom: 1rem;
+  padding: 0.5rem 0.75rem;
+  background-color: rgba(255, 107, 107, 0.1);
+  border: 1px solid rgba(255, 107, 107, 0.3);
+  border-radius: 6px;
+  color: #ff6b6b;
+  font-size: 0.8125rem;
+}
+
+/* Conflict modal (409 stale_update). Stacked on top of the settings modal
+   with its own backdrop -- the settings modal stays open underneath so the
+   user's unsaved edits survive. Patterned on NewFolderModal. */
+.routine-conflict-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Above .routine-settings-overlay (z-index: 1000). */
+  z-index: 1100;
+  animation: fadeIn 0.15s ease-out;
+}
+
+.routine-conflict-modal {
+  background-color: #2a2a2a;
+  border-radius: 12px;
+  width: 440px;
+  max-width: 90vw;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  animation: slideUp 0.15s ease-out;
+}
+
+.routine-conflict-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.routine-conflict-header h2 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #ffc107;
+}
+
+.routine-conflict-close-button {
+  background: none;
+  border: none;
+  padding: 0.25rem;
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.5);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s, background-color 0.15s;
+}
+
+.routine-conflict-close-button:hover {
+  color: rgba(255, 255, 255, 0.87);
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.routine-conflict-body {
+  padding: 1.25rem 1.5rem 1.5rem;
+}
+
+.routine-conflict-body p {
+  margin: 0 0 1.25rem;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.routine-conflict-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.625rem;
+  flex-wrap: wrap;
+}
+
+.routine-conflict-discard-button {
+  padding: 0.5rem 1rem;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background-color: var(--accent);
+  color: var(--accent-contrast);
+  font-size: 0.875rem;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.routine-conflict-discard-button:hover:not(:disabled) {
+  background-color: var(--accent-hover);
+}
+
+.routine-conflict-discard-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.routine-conflict-overwrite-button {
+  padding: 0.5rem 1rem;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background-color: #d32f2f;
+  color: white;
+  font-size: 0.875rem;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.routine-conflict-overwrite-button:hover:not(:disabled) {
+  background-color: #b71c1c;
+}
+
+.routine-conflict-overwrite-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Actions */
+.routine-settings-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 1.5rem;
+}
+
+.routine-settings-save-button {
+  padding: 0.5rem 1.25rem;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background-color: var(--accent);
+  color: var(--accent-contrast);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.routine-settings-save-button:hover:not(:disabled) {
+  background-color: var(--accent-hover);
+}
+
+.routine-settings-save-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Danger zone (no border-top -- danger zone is in its own nav section) */
+.routine-settings-danger-zone {
+}
+
+.routine-settings-danger-zone h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: #ff6b6b;
+}
+
+.routine-settings-danger-zone p {
+  font-size: 0.8125rem;
+  color: rgba(255, 255, 255, 0.6);
+  margin: 0 0 1rem;
+  line-height: 1.5;
+}
+
+.routine-settings-delete-button {
+  padding: 0.5rem 1rem;
+  border: 1px solid #ff6b6b;
+  border-radius: 8px;
+  background: none;
+  color: #ff6b6b;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.routine-settings-delete-button:hover {
+  background-color: rgba(255, 107, 107, 0.1);
+}
+
+.routine-settings-delete-confirm {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.routine-settings-delete-confirm span {
+  font-size: 0.875rem;
+  color: #ff6b6b;
+  font-weight: 500;
+}
+
+.routine-settings-delete-confirm-button {
+  padding: 0.5rem 1rem;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background-color: #d32f2f;
+  color: white;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.routine-settings-delete-confirm-button:hover:not(:disabled) {
+  background-color: #b71c1c;
+}
+
+.routine-settings-delete-confirm-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.routine-settings-delete-cancel-button {
+  padding: 0.5rem 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  background: none;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.routine-settings-delete-cancel-button:hover:not(:disabled) {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+/* -------------------------------------------------------------------
+   Light mode
+   ------------------------------------------------------------------- */
+@media (prefers-color-scheme: light) {
+  .routine-settings-modal {
+    background-color: #ffffff;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+  }
+
+  .routine-settings-header {
+    border-bottom-color: rgba(0, 0, 0, 0.1);
+  }
+
+  .routine-settings-header h2 {
+    color: #1a1a1a;
+  }
+
+  .routine-settings-close-button {
+    color: rgba(0, 0, 0, 0.5);
+  }
+
+  .routine-settings-close-button:hover {
+    color: rgba(0, 0, 0, 0.87);
+    background-color: rgba(0, 0, 0, 0.05);
+  }
+
+  .routine-settings-loading {
+    color: rgba(0, 0, 0, 0.6);
+  }
+
+  .routine-settings-label {
+    color: rgba(0, 0, 0, 0.8);
+  }
+
+  .routine-settings-label-hint {
+    color: rgba(0, 0, 0, 0.5);
+  }
+
+  .routine-settings-input,
+  .routine-settings-textarea {
+    border-color: rgba(0, 0, 0, 0.2);
+    background-color: rgba(0, 0, 0, 0.03);
+    color: #1a1a1a;
+  }
+
+  .routine-settings-select {
+    border-color: rgba(0, 0, 0, 0.2);
+    background-color: rgba(0, 0, 0, 0.03);
+    color: #1a1a1a;
+  }
+
+  .routine-settings-guide-readonly {
+    border-color: rgba(0, 0, 0, 0.2);
+    background-color: rgba(0, 0, 0, 0.03);
+  }
+
+  .routine-settings-guide-name {
+    color: #1a1a1a;
+  }
+
+  .routine-settings-guide-clear-button {
+    border-color: rgba(0, 0, 0, 0.2);
+    color: rgba(0, 0, 0, 0.6);
+  }
+
+  .routine-settings-guide-clear-button:hover:not(:disabled) {
+    background-color: rgba(0, 0, 0, 0.05);
+  }
+
+  .routine-settings-nav {
+    border-right-color: rgba(0, 0, 0, 0.1);
+  }
+
+  .routine-settings-nav-item {
+    color: rgba(0, 0, 0, 0.6);
+  }
+
+  .routine-settings-nav-item:hover {
+    color: rgba(0, 0, 0, 0.87);
+    background-color: rgba(0, 0, 0, 0.05);
+  }
+
+  .routine-settings-nav-item.active {
+    color: rgba(0, 0, 0, 0.87);
+    background-color: rgb(var(--accent-rgb) / 0.1);
+  }
+
+  .routine-settings-nav-danger {
+    color: rgba(220, 53, 69, 0.7);
+  }
+
+  .routine-settings-nav-danger:hover {
+    color: rgba(220, 53, 69, 0.9);
+    background-color: rgba(220, 53, 69, 0.08);
+  }
+
+  .routine-settings-nav-danger.active {
+    color: rgba(220, 53, 69, 0.9);
+    background-color: rgba(220, 53, 69, 0.1);
+  }
+
+  .routine-settings-schedule-fields.disabled .routine-settings-label {
+    color: rgba(0, 0, 0, 0.35);
+  }
+
+  .routine-settings-last-run {
+    color: rgba(0, 0, 0, 0.5);
+  }
+
+  .routine-settings-error {
+    background-color: rgba(211, 47, 47, 0.05);
+    border-color: rgba(211, 47, 47, 0.3);
+    color: #d32f2f;
+  }
+
+  .routine-conflict-modal {
+    background-color: #ffffff;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+  }
+
+  .routine-conflict-header {
+    border-bottom-color: rgba(0, 0, 0, 0.1);
+  }
+
+  .routine-conflict-header h2 {
+    color: #b88600;
+  }
+
+  .routine-conflict-close-button {
+    color: rgba(0, 0, 0, 0.5);
+  }
+
+  .routine-conflict-close-button:hover {
+    color: rgba(0, 0, 0, 0.87);
+    background-color: rgba(0, 0, 0, 0.05);
+  }
+
+  .routine-conflict-body p {
+    color: rgba(0, 0, 0, 0.75);
+  }
+
+  .routine-settings-danger-zone h3 {
+    color: #d32f2f;
+  }
+
+  .routine-settings-danger-zone p {
+    color: rgba(0, 0, 0, 0.6);
+  }
+
+  .routine-settings-delete-button {
+    border-color: #d32f2f;
+    color: #d32f2f;
+  }
+
+  .routine-settings-delete-button:hover {
+    background-color: rgba(211, 47, 47, 0.05);
+  }
+
+  .routine-settings-delete-confirm span {
+    color: #d32f2f;
+  }
+
+  .routine-settings-delete-cancel-button {
+    border-color: rgba(0, 0, 0, 0.2);
+    color: rgba(0, 0, 0, 0.7);
+  }
+
+  .routine-settings-delete-cancel-button:hover:not(:disabled) {
+    background-color: rgba(0, 0, 0, 0.03);
+  }
+}

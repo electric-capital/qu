@@ -1,0 +1,120 @@
+/* Gmail settings section. Neutral colours come from the design tokens in
+   index.css (label rows and the input on --surface-raised, text / border
+   tokens elsewhere); only the semantic error red is literal, so the
+   light-mode block is limited to that. */
+.gmail-labels-empty {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  font-style: italic;
+  margin: 0.5rem 0;
+}
+
+.gmail-labels-list {
+  list-style: none;
+  margin: 0 0 0.75rem 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  max-width: 420px;
+}
+
+.gmail-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.375rem 0.5rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  background-color: var(--surface-raised);
+}
+
+.gmail-label-name {
+  font-size: 0.875rem;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.gmail-label-prefix {
+  color: var(--text-muted);
+}
+
+.gmail-label-remove {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0.125rem 0.375rem;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.gmail-label-remove:hover {
+  color: #ff6b6b;
+  background-color: rgba(255, 107, 107, 0.1);
+}
+
+.gmail-label-add-row {
+  display: flex;
+  gap: 0.5rem;
+  max-width: 420px;
+}
+
+.gmail-label-input {
+  flex: 1;
+  padding: 0.375rem 0.5rem;
+  border-radius: 4px;
+  border: 1px solid var(--border-strong);
+  background-color: var(--surface-raised);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.875rem;
+}
+
+.gmail-label-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.gmail-label-add-button {
+  padding: 0.375rem 0.75rem;
+  border-radius: 4px;
+  border: 1px solid var(--border-strong);
+  background-color: transparent;
+  color: var(--text);
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.gmail-label-add-button:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.gmail-label-add-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.gmail-label-input-error {
+  font-size: 0.8125rem;
+  color: #ff6b6b;
+  margin: 0.375rem 0 0 0;
+  max-width: 420px;
+}
+
+/* Light mode: only the literal semantic error red needs a darker,
+   higher-contrast variant on light grounds. Everything else follows the
+   tokens. */
+@media (prefers-color-scheme: light) {
+  .gmail-label-remove:hover {
+    color: #d32f2f;
+    background-color: rgba(211, 47, 47, 0.08);
+  }
+
+  .gmail-label-input-error {
+    color: #d32f2f;
+  }
+}

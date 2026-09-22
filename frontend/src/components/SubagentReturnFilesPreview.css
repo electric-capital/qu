@@ -1,0 +1,88 @@
+/* File list inside subagent_return approval cards. */
+
+/* The generic preview fields are flex rows (key left, value right); the
+   file list needs the full card width, so its field stacks instead.
+   Applies to both the chat card and the Requests pane variants. */
+.action-request-preview-field.subagent-files-field,
+.request-preview-field.subagent-files-field {
+  display: block;
+  min-width: 0;
+}
+
+.subagent-return-files {
+  margin-top: 0.5rem;
+  border: 1px solid #3a3a6a;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.subagent-return-file-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0.55rem;
+  font-size: 0.82rem;
+}
+
+.subagent-return-file-row + .subagent-return-file-row {
+  border-top: 1px solid #3a3a6a;
+}
+
+.subagent-return-file-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.subagent-return-file-size {
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 0.75rem;
+  flex-shrink: 0;
+}
+
+.subagent-return-file-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.75rem;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid #3a3a6a;
+  border-radius: 4px;
+  color: inherit;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.subagent-return-file-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.subagent-return-file-btn.download {
+  padding: 0.15rem 0.3rem;
+}
+
+@media (prefers-color-scheme: light) {
+  .subagent-return-files {
+    border-color: #d0d0e0;
+  }
+
+  .subagent-return-file-row + .subagent-return-file-row {
+    border-top-color: #d0d0e0;
+  }
+
+  .subagent-return-file-size {
+    color: rgba(0, 0, 0, 0.45);
+  }
+
+  .subagent-return-file-btn {
+    background: rgba(0, 0, 0, 0.04);
+    border-color: #d0d0e0;
+  }
+
+  .subagent-return-file-btn:hover {
+    background: rgba(0, 0, 0, 0.08);
+  }
+}

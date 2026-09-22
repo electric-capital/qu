@@ -1,0 +1,259 @@
+/* While the mobile shell is mounted (class set by MobileShell), the document
+ * must never scroll or rubber-band — all scrolling happens in inner panes.
+ * Prevents iOS Safari from panning the page into a stuck state (top bar
+ * off-screen, gap under the composer). */
+html.mobile-shell-lock,
+body.mobile-shell-lock {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+/* Mobile shell: top bar + single main pane + slide-in drawers. Fixed to the
+ * viewport; 100dvh fallback until the visualViewport effect pins the height
+ * to the visible area (keyboard-aware) in px. */
+.mobile-shell {
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+/* iOS Safari auto-zooms the whole page when a focused form control's
+ * font-size is under 16px — and the zoom/pan can stick after the keyboard
+ * closes. Keep every focusable control in the shell at >= 16px. */
+.mobile-shell input,
+.mobile-shell textarea,
+.mobile-shell select {
+  font-size: 16px;
+}
+
+/* Inner scrollers absorb their own overscroll instead of chaining a
+ * rubber-band to the document. */
+.mobile-shell .messages-container,
+.mobile-shell .sidebar-panel,
+.mobile-shell .right-panel-section {
+  overscroll-behavior: contain;
+}
+
+/* Top bar */
+.mobile-topbar {
+  /* Horizontal room taken by the widest button cluster (menu + new chat on the
+     left): edge padding + two 40px buttons + the gaps around them. The title is
+     centered inside a region that clears this much on BOTH sides so it stays at
+     the middle of the window regardless of how many buttons each side has. */
+  --mobile-topbar-side: calc(80px + 0.875rem);
+  position: relative;
+  flex-shrink: 0;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0 0.375rem;
+  background-color: #1a1a1a;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.mobile-topbar-title {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--mobile-topbar-side);
+  right: var(--mobile-topbar-side);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  min-width: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.87);
+  pointer-events: none;
+}
+
+.mobile-topbar-title-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Folder glyph shown before the project name while drilled into a project */
+.mobile-topbar-title-icon {
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+/* 40px square tap targets */
+.mobile-topbar-button {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.75);
+  cursor: pointer;
+  padding: 0;
+}
+
+.mobile-topbar-button:active {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Right-edge button; the title no longer occupies the flex gap */
+.mobile-topbar-button-end {
+  margin-left: auto;
+}
+
+/* Main pane */
+.mobile-main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+/* Children written against the desktop layout size themselves 100vh; inside
+ * the shell they must fill the remaining space under the top bar instead.
+ * min-width: 0 is the mobile-shell analog of .main-content's shrink rule on
+ * desktop (App.css): without it, wide intrinsic content (a code block's
+ * unwrapped lines) props the whole panel out past the viewport instead of
+ * scrolling inside its own pre. */
+.mobile-shell .chat-panel,
+.mobile-shell .requests-view {
+  height: 100%;
+  min-width: 0;
+}
+
+/* Long unbroken tokens (URLs, ids) in message text: break rather than
+ * overflow, since a phone viewport has no slack to absorb them. */
+.mobile-shell .message-content {
+  overflow-wrap: anywhere;
+}
+
+/* Drawer */
+.mobile-drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: min(85vw, 320px);
+  z-index: 1000;
+  transform: translateX(-105%);
+  transition: transform 0.2s ease-in-out;
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.4);
+  background-color: var(--surface-raised);
+}
+
+.mobile-drawer.open {
+  transform: none;
+}
+
+/* The existing Sidebar renders inside the drawer: stretch it to the drawer's
+ * box instead of its fixed desktop 260px x 100vh. */
+.mobile-drawer .sidebar {
+  width: 100%;
+  height: 100%;
+  border-right: none;
+}
+
+/* Workspace drawer (right side), hosting the existing RightPanel
+ * (FileBrowser + ProjectTables). */
+.mobile-workspace-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(85vw, 360px);
+  z-index: 1000;
+  transform: translateX(105%);
+  transition: transform 0.2s ease-in-out;
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.4);
+  background-color: var(--surface-raised);
+}
+
+.mobile-workspace-drawer.open {
+  transform: none;
+}
+
+/* RightPanel sizes itself for the desktop layout via an inline width style
+ * (stored px width) and 100vh height; inside the drawer it must fill the
+ * drawer's box instead — !important beats the inline style. */
+.mobile-workspace-drawer .right-panel {
+  width: 100% !important;
+  height: 100%;
+}
+
+/* Mouse-only desktop affordance; inert and visually noisy on touch. */
+.mobile-workspace-drawer .right-panel-resize-handle {
+  display: none;
+}
+
+/* Larger tap targets in the drawer's sidebar: slightly bigger row text and
+ * more vertical padding than the desktop density. */
+.mobile-drawer .conversation-title,
+.mobile-drawer .routine-name,
+.mobile-drawer .routine-sub-item-timestamp {
+  font-size: 0.875rem;
+}
+
+.mobile-drawer .conversation-item {
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+
+.mobile-drawer .routine-item,
+.mobile-drawer .project-header,
+.mobile-drawer .routine-group-header {
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+
+.mobile-drawer-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  background-color: rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease-in-out;
+}
+
+.mobile-drawer-overlay.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+@media (prefers-color-scheme: light) {
+  .mobile-topbar {
+    background-color: #f5f5f5;
+    border-bottom-color: rgba(0, 0, 0, 0.1);
+  }
+
+  .mobile-topbar-title {
+    color: #213547;
+  }
+
+  .mobile-topbar-button {
+    color: rgba(0, 0, 0, 0.65);
+  }
+
+  .mobile-topbar-button:active {
+    background-color: rgba(0, 0, 0, 0.08);
+  }
+
+  .mobile-drawer {
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.15);
+  }
+
+  .mobile-workspace-drawer {
+    box-shadow: -4px 0 24px rgba(0, 0, 0, 0.15);
+  }
+}

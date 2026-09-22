@@ -1,0 +1,204 @@
+import { useEffect, useCallback } from 'react'
+import { Routes, Route, Navigate, useParams, useNavigate, useLocation } from 'react-router-dom'
+import './App.css'
+import { ConversationProvider, useConversationContext } from './contexts/ConversationContext'
+import { Sidebar } from './components/Sidebar'
+import { ChatPanel } from './components/ChatPanel'
+import { HomeComposer } from './components/HomeComposer'
+import { RightPanel } from './components/RightPanel'
+import { SettingsModal } from './components/SettingsModal'
+import { SignInScreen } from './components/SignInScreen'
+import { RequestsView } from './components/RequestsView'
+import { AdminSystemReportsPage } from './pages/AdminSystemReportsPage'
+import { MobileShell } from './components/MobileShell'
+import { useIsMobile } from './hooks/useIsMobile'
+
+function AppContent() {
+  const {
+    activeConversationId,
+    setActiveConversationId,
+    isAuthenticated,
+    isCheckingAuth,
+    appName,
+    isSettingsOpen,
+    setSettingsOpen,
+    hasAnyServiceConnected,
+    setActiveProjectId,
+    showRequestsView,
+    setShowRequestsView,
+  } = useConversationContext()
+
+  const params = useParams<{ conversationId?: string; projectId?: string }>()
+  const navigate = useNavigate()
+  const location = useLocation()
+  const isMobile = useIsMobile()
+
+  // Sync URL -> requests-inbox state. /inbox is the deep-linkable address of
+  // the RequestsView (linked from Slack pending-request reminder DMs); any
+  // navigation away (conversation click, new chat, browser back) closes it.
+  const isInboxRoute = location.pathname === '/inbox'
+  useEffect(() => {
+    setShowRequestsView(isInboxRoute)
+  }, [isInboxRoute, setShowRequestsView])
+
+  // Sync URL params -> context state
+  // The URL is the source of truth; this effect mirrors URL params into context
+  // so that components reading from context (Sidebar, etc.) stay in sync.
+  useEffect(() => {
+    const urlConvoId = params.conversationId ?? null
+    const urlProjectId = params.projectId ?? null
+    setActiveConversationId(urlConvoId)
+    setActiveProjectId(urlProjectId)
+  }, [params.conversationId, params.projectId, setActiveConversationId, setActiveProjectId])
+
+  // Set the browser tab title (overrides the static <title> from index.html)
+  useEffect(() => {
+    document.title = appName;
+  }, [appName]);
+
+  // Auto-open settings for new users who haven't connected any services.
+  // Desktop only: on mobile the full-screen settings takeover would hijack
+  // the first view, so new users find Data Connections on their own.
+  useEffect(() => {
+    if (isAuthenticated && !hasAnyServiceConnected && !isMobile) {
+      setSettingsOpen(true);
+    }
+  }, [isAuthenticated, hasAnyServiceConnected, isMobile, setSettingsOpen]);
+
+  // Handle conversation selection (with optional project context)
+  // Now navigates to the appropriate URL instead of setting state directly
+  const handleConversationSelect = useCallback((id: string, projectId?: string | null) => {
+    if (projectId && id) {
+      navigate(`/projects/${projectId}/${id}`)
+    } else if (id) {
+      navigate(`/chats/${id}`)
+    } else {
+      navigate('/')
+    }
+  }, [navigate])
+
+  // Handle new conversation creation (with optional project context)
+  // Now navigates to the appropriate URL instead of setting state directly
+  const handleNewConversation = useCallback((id: string, projectId?: string | null) => {
+    if (projectId && id) {
+      navigate(`/projects/${projectId}/${id}`)
+    } else if (id) {
+      navigate(`/chats/${id}`)
+    } else {
+      navigate('/')
+    }
+  }, [navigate])
+
+  // Handle edge case: conversation loaded via /chats/<id> but actually belongs to a project.
+  // The ChatPanel will call this when the conversation detail reveals a project_id.
+  const handleProjectIdLoaded = useCallback((conversationId: string, projectId: string) => {
+    // Only redirect if we're on /chats/<id> (no projectId in URL params)
+    if (!params.projectId && params.conversationId === conversationId) {
+      navigate(`/projects/${projectId}/${conversationId}`, { replace: true })
+    }
+  }, [params.projectId, params.conversationId, navigate])
+
+  // Show loading state while checking session auth
+  if (isCheckingAuth) {
+    return (
+      <div className="app-container">
+        <div className="api-key-form-container">
+          <h1>{appName}</h1>
+          <p>Loading...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // If not authenticated, show inline sign-in screen
+  if (!isAuthenticated) {
+    return <SignInScreen />
+  }
+
+  // Phone-width viewports get the adaptive mobile shell (same routes and data
+  // layer, different layout tree). Switches live when crossing the breakpoint.
+  if (isMobile) {
+    return (
+      <MobileShell
+        activeConversationId={activeConversationId}
+        projectId={params.projectId ?? null}
+        onConversationSelect={handleConversationSelect}
+        onNewConversation={handleNewConversation}
+        onProjectIdLoaded={handleProjectIdLoaded}
+      />
+    )
+  }
+
+  return (
+    <div className="app-container">
+      <Sidebar
+        activeConversationId={activeConversationId}
+        onConversationSelect={handleConversationSelect}
+        onNewConversation={handleNewConversation}
+      />
+      {showRequestsView ? (
+        <RequestsView />
+      ) : (
+        <>
+          <div className="main-content">
+            {activeConversationId ? (
+              <ChatPanel
+                conversationId={activeConversationId}
+                onProjectIdLoaded={handleProjectIdLoaded}
+              />
+            ) : (
+              <HomeComposer onNewConversation={handleNewConversation} />
+            )}
+          </div>
+          <RightPanel
+            conversationId={activeConversationId}
+            projectId={params.projectId ?? null}
+          />
+        </>
+      )}
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setSettingsOpen(false)}
+      />
+    </div>
+  )
+}
+
+function AdminSystemReportsRoute() {
+  const { isAuthenticated, isCheckingAuth, appName } = useConversationContext();
+
+  if (isCheckingAuth) {
+    return (
+      <div className="app-container">
+        <div className="api-key-form-container">
+          <h1>{appName}</h1>
+          <p>Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <SignInScreen />;
+  }
+
+  return <AdminSystemReportsPage />;
+}
+
+function App() {
+  return (
+    <ConversationProvider>
+      <Routes>
+        <Route path="/" element={<AppContent />} />
+        <Route path="/chats/:conversationId" element={<AppContent />} />
+        <Route path="/projects/:projectId/:conversationId" element={<AppContent />} />
+        <Route path="/inbox" element={<AppContent />} />
+        <Route path="/admin/system-reports" element={<AdminSystemReportsRoute />} />
+        {/* Legacy deep links from before the "System Reports" rename. */}
+        <Route path="/admin/system-monitor" element={<Navigate to="/admin/system-reports" replace />} />
+      </Routes>
+    </ConversationProvider>
+  )
+}
+
+export default App

@@ -1,0 +1,126 @@
+/**
+ * HomeComposer -- greeting + centering for the root empty-state screen.
+ *
+ * The composer itself reuses ChatPanel.css (.input-area.composer, the
+ * .composer-bubble, etc.) unchanged; this file only styles the centered
+ * column, the greeting, and a max-width wrapper so the composer doesn't
+ * stretch full-bleed.
+ */
+
+.home-composer {
+  /* Column layout: the greeting + composer are centered in the flexible body
+     (as .main-content .no-conversation-selected in App.css used to center
+     them), with the branding footer pinned to the bottom edge. */
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.home-composer-body {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  min-height: 0;
+}
+
+/* Branding footer: two centered muted lines at the bottom of the home screen. */
+.home-composer-footer {
+  flex: none;
+  padding: 0 1.5rem 1.25rem;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.home-composer-footer-line {
+  margin: 0;
+}
+
+/* Monochrome heart/bolt morph (HeartBoltMorph): inherits the muted footer
+   colour via currentColor. The box is taller than the line so the bolt gets
+   its proportions; centre it on the text and cancel its height with negative
+   vertical margins so the line box doesn't grow. */
+.home-composer-footer-heart {
+  display: inline-block;
+  vertical-align: middle;
+  margin: -0.5em -0.15em;
+}
+
+.home-composer-inner {
+  width: 100%;
+  max-width: 720px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.home-composer-greeting {
+  font-size: 2.25rem;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  margin: 0 0 1.5rem 0;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+/* Destination cue shown when the Sidebar is drilled into a project: the
+   first send creates the chat inside that project, so name it up front. */
+.home-composer-project-hint {
+  margin: -0.75rem 0 1.25rem 0;
+  text-align: center;
+  font-size: 0.95rem;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.home-composer-project-hint strong {
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.home-composer-error {
+  margin: 0 0 0.75rem 0;
+  padding: 0.6rem 0.85rem;
+  border-radius: 8px;
+  background-color: rgba(220, 38, 38, 0.15);
+  border: 1px solid rgba(220, 38, 38, 0.4);
+  color: #fca5a5;
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+/* The composer reuses .input-area styling; here we just constrain its width
+   within the centered column (it normally fills .input-area full-bleed). */
+.home-composer-composer {
+  width: 100%;
+}
+
+/* The composer's own floating bubble is the card here; drop the strip
+   padding around it so the bubble aligns with the greeting column. */
+.home-composer-composer .input-area.composer {
+  padding: 0;
+}
+
+@media (prefers-color-scheme: light) {
+  .home-composer-greeting {
+    color: #213547;
+  }
+
+  .home-composer-project-hint {
+    color: rgba(33, 53, 71, 0.6);
+  }
+
+  .home-composer-project-hint strong {
+    color: rgba(33, 53, 71, 0.85);
+  }
+
+  .home-composer-error {
+    background-color: rgba(220, 38, 38, 0.1);
+    border-color: rgba(220, 38, 38, 0.35);
+    color: #b91c1c;
+  }
+}
