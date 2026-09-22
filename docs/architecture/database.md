@@ -260,7 +260,7 @@ The `ActionRequest` model in `db/models.py` maps to the `action_requests` table.
 | `status` | `String(20)` | Not null, default `"open"` | Request lifecycle state: `"open"`, `"denied"` (Revise, or the legacy bare deny), `"executed"`, or `"stopped"` (the card's Stop button: discarded AND the conversation halted until the user's next message) |
 | `result` | `JSON` | Nullable | Handler return value on successful execution; on a denial it stores `{"denied": true}` (legacy Deny) or `{"denied": true, "feedback": "<user text>"}` (Revise); `{"stopped": true}` on Stop; NULL while open |
 | `created_at` | `DateTime` | Default `utcnow` | When the request was created |
-| `resolved_at` | `DateTime` | Nullable | When the request was approved/denied; NULL while open |
+| `resolved_at` | `DateTime` | Nullable | When the request was approved, revised, or stopped; NULL while open |
 
 The `user_id` column has a foreign key to `users.id` with `ON DELETE CASCADE`, so action requests are automatically deleted when the parent user record is removed. Indexes declared in `__table_args__` include `ix_action_requests_user_id` (per-user listing), `ix_action_requests_conversation_id` (per-conversation queries), `ix_action_requests_user_id_status` (per-user status filter / counts), and `ix_action_requests_user_status_created` on `(user_id, status, created_at)` for the Requests-pane status-filtered listings ordered by `created_at DESC` (added by Alembic migration `511e66a8b1fd`).
 
@@ -478,7 +478,7 @@ The same grouped-query core (`_collect_usage_buckets()`, which also takes an opt
 
 The long-context flag (per-call context > 200K tokens; Gemini keys on `prompt_token_count`, Anthropic on input + cache_read + cache_creation) exists because aggregated sums destroy the per-call context size that tier pricing keys on -- each same-tier bucket is priced via the static list-price table in `db/llm_pricing.py` (cost is linear in the token fields within a tier), then the buckets merge back into one entry per model. Models without a pricing entry surface `estimated_cost_usd: null` and null out the conversation total.
 
-**`db/action_request_store.py`** -- Action request CRUD and resolution. See [Action Requests Architecture](action-requests.md) for the full feature description. `resolve_action_request()` transitions status to `executed` or `denied`. `list_action_requests_enriched()` joins with conversation and routine data for enriched display.
+**`db/action_request_store.py`** -- Action request CRUD and resolution. See [Action Requests Architecture](action-requests.md) for the full feature description. `resolve_action_request()` transitions status to `executed`, `denied` (Revise), or `stopped` (Stop). `list_action_requests_enriched()` joins with conversation and routine data for enriched display.
 
 **`db/tool_wait_handle_store.py`** -- Wait-handle CRUD plus the bulk reads (`bulk_get_handles_by_ids`) and bulk writes (`mark_timed_out`, `cancel_pending_for_conversation`) used by the live `wait_for_handles` arm and the resume path. See [Wait Handles Architecture](wait-handles.md).
 

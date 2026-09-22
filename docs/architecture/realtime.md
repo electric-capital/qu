@@ -267,7 +267,7 @@ Two tabs racing `send_message` for the same conversation would both append to `c
 A half-open WebSocket (NAT timeout, mobile sleep, mid-tunnel drop) can leave the OS TCP layer unaware that the path is dead -- outbound writes keep buffering. Without a client-side deadline on inbound frames the user sees a stale UI for minutes. The watchdog adds a 60s deadline that fires `forceReconnect` and triggers the existing reconnect / resubscribe / catchup flow.
 
 **Why keep `requestEvents.ts` after the persistent WS arrived?**
-The per-user `request_count_changed` round-trip is fast but not instant; emitting the local `emitRequestCountChange()` after the same-tab approve/deny REST call still updates the badge immediately (idempotent with the server event arriving milliseconds later). Cross-tab events go through the persistent WS exclusively. A future refactor could drop the local bus once round-trip latency is measured.
+The per-user `request_count_changed` round-trip is fast but not instant; emitting the local `emitRequestCountChange()` after the same-tab approve/revise/stop REST call still updates the badge immediately (idempotent with the server event arriving milliseconds later). Cross-tab events go through the persistent WS exclusively. A future refactor could drop the local bus once round-trip latency is measured.
 
 **Why TTL-based subscription eviction instead of unsubscribing on tab switch?**
 The original FE called `unsubscribe` from a React effect cleanup on every conversation switch. That dropped subs for the away-conversation, so transient `text_delta` events emitted while the user was on a different tab were silently discarded; coming back mid-stream produced an in-progress assistant message with missing middle chunks.
