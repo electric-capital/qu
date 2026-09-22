@@ -1,0 +1,124 @@
+/* About section: a centered card with release metadata and credits. Every
+   colour comes from the design tokens in index.css, so no light-mode block
+   is needed. */
+.about-section {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.about-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 2.5rem 1rem;
+  gap: 0.75rem;
+}
+
+/* The mark has no tile behind it; a soft accent glow stands in for the old tile shadow. */
+.about-logo {
+  width: 72px;
+  height: 72px;
+  filter: drop-shadow(0 8px 24px rgb(var(--accent-rgb) / 0.35));
+  margin-bottom: 0.5rem;
+}
+
+.about-name {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.about-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0.25rem 0 0.5rem;
+  font-size: 0.875rem;
+}
+
+.about-meta-row {
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.about-meta-row dt {
+  color: var(--text-secondary);
+}
+
+.about-meta-row dt::after {
+  content: ':';
+}
+
+.about-meta-row dd {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: var(--text);
+}
+
+/* Shown only when HEAD has moved past the nearest release tag. */
+.about-build-note {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.about-credit {
+  margin: 0.5rem 0 0;
+  font-size: 0.9375rem;
+  color: var(--text-secondary);
+}
+
+.about-license {
+  margin: 0;
+  max-width: 28rem;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.about-license a {
+  color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.about-license a:hover {
+  color: var(--accent-text);
+}
+
+/* Monochrome heart/bolt morph: inherits the credit line's muted colour via
+   currentColor, matching the home composer footer. Taller than the line so
+   the bolt keeps its proportions; centred on the text with negative vertical
+   margins so the line box doesn't grow. */
+.about-heart {
+  display: inline-block;
+  vertical-align: middle;
+  margin: -0.5em -0.1em;
+}
+
+.about-github-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  padding: 0.5rem 1rem;
+  border-radius: 999px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text);
+  background-color: var(--hover);
+  border: 1px solid var(--border);
+  text-decoration: none;
+  transition: background-color 0.15s, border-color 0.15s;
+}
+
+.about-github-link:hover {
+  background-color: var(--pressed);
+  border-color: var(--border-strong);
+}

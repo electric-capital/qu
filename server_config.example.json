@@ -1,0 +1,45 @@
+{
+  "_comment": "Copy to server_config.json (git-ignored). Every key is optional; the noted defaults apply when absent. Secrets live in server_credentials.json, not here.",
+
+  "data_dir": "data",
+  "_data_dir": "Data directory holding the SQLite DB, chats/, projects/, logs/, and secret_key. Relative paths resolve against the project root. The QUEST_DATA_DIR env var (set by run.py in local mode) takes precedence over this key.",
+
+  "admin_emails": ["admin@example.com"],
+  "_admin_emails": "Emails granted admin (system monitor, impersonation). Default: empty in staging/prod; ['admin@quest.local'] in local mode.",
+
+  "allowed_login_domain": "example.com",
+  "_allowed_login_domain": "Email domain allowed to sign in (all modes; some domain is always enforced). Default: the built-in company domain in auth/config.py. Set by the prod bootstrap wizard so deployments for other organizations can admit their own domain. In local mode the QUEST_ALLOWED_LOGIN_DOMAIN env var (from dev-config.json) takes precedence.",
+
+  "allowed_login_emails": ["person@gmail.com"],
+  "_allowed_login_emails": "Optional individual email addresses allowed to sign in in addition to allowed_login_domain (case-insensitive; see is_login_allowed() in auth/config.py). For accounts outside any single domain, e.g. personal @gmail.com users on a family deployment. Default: empty.",
+
+  "app_base_url": "https://quest.example.com",
+  "_app_base_url": "Optional full public URL this deployment is accessed through (no trailing slash needed). Used for absolute links the app generates to itself (e.g. the 'created using Quest' attribution on outgoing Slack messages -- plain text when unset) and, when set, as the base for OAuth redirect/callback URLs, taking precedence over oauth_hostname and the request host. Set by the prod bootstrap wizard. Env override: QUEST_APP_BASE_URL.",
+
+  "oauth_hostname": "dev.example.com",
+  "_oauth_hostname": "Optional hostname override for OAuth redirect/callback URLs -- providers like Google reject raw-IP redirect URIs. Hostname only (the request's own scheme and port are kept), so it suits multi-checkout dev boxes where each instance runs on its own port; app_base_url takes precedence when both are set. Devs add an /etc/hosts entry pointing it at the server's IP and browse the app through it. Env override: QUEST_OAUTH_HOSTNAME.",
+
+
+  "gemini": {
+    "model": "gemini-3.1-pro-preview"
+  },
+  "_gemini": "Default chat model when a conversation has none set.",
+
+  "anthropic": {
+    "vertex_project_id": "my-gcp-project",
+    "vertex_region": "us-east5"
+  },
+  "_anthropic": "GCP project/region for Claude models on Vertex AI (auth via Application Default Credentials). Claude models are unavailable until vertex_project_id is set. Env overrides: ANTHROPIC_VERTEX_PROJECT_ID / ANTHROPIC_VERTEX_REGION.",
+
+  "gemini_vertex": {
+    "vertex_project_id": "my-gcp-project",
+    "vertex_region": "global"
+  },
+  "_gemini_vertex": "GCP project/region for Gemini models (all served via Vertex AI). Falls back to anthropic.vertex_project_id when unset. Env overrides: GEMINI_VERTEX_PROJECT_ID / GEMINI_VERTEX_REGION.",
+
+  "telegram_app_info": {
+    "api_id": 123456,
+    "api_hash": "0123456789abcdef0123456789abcdef"
+  },
+  "_telegram_app_info": "LEGACY location for the Telegram MTProto app credentials (my.telegram.org). New deployments set them in Settings > Service Credentials (admin) instead; an existing section is migrated into the per-service store at startup."
+}

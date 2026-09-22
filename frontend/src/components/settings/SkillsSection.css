@@ -1,0 +1,261 @@
+/* Skills section. Colours come from the design tokens in index.css; only the
+   semantic public-badge green is literal, so the light-mode block is limited
+   to that. */
+
+/* Tab bar */
+.skills-tab-bar {
+  display: flex;
+  gap: 0;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.skills-tab-btn {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 0.5rem 1rem;
+  font-size: 0.8125rem;
+  font-family: inherit;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.skills-tab-btn:hover {
+  color: var(--text-secondary);
+}
+
+.skills-tab-btn.active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+.skills-toolbar {
+  display: flex;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.skills-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.skill-card {
+  transition: border-color 0.15s;
+}
+
+.skill-card-editing {
+  border-color: var(--accent);
+}
+
+.skill-card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.375rem;
+}
+
+.skill-card-name {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* Visibility badges */
+.skill-badge-private,
+.skill-badge-shared,
+.skill-badge-public {
+  display: inline-block;
+  padding: 0.0625rem 0.5rem;
+  border-radius: 10px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+}
+
+.skill-badge-private {
+  background: var(--hover);
+  color: var(--text-secondary);
+}
+
+.skill-badge-shared {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.skill-badge-public {
+  background: rgba(76, 175, 80, 0.15);
+  color: #4caf50;
+}
+
+/* Skill description */
+.skill-card-description {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.375rem;
+}
+
+/* Creator info (shown on shared skill cards) */
+.skill-card-creator {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-bottom: 0.25rem;
+}
+
+/* Show more/Show less toggle on truncated skill content */
+.skill-preview-toggle {
+  display: block;
+  margin-top: 0.25rem;
+  padding: 0;
+  background: none;
+  border: none;
+  font-size: 0.75rem;
+  font-family: inherit;
+  color: var(--accent-text);
+  cursor: pointer;
+}
+
+.skill-preview-toggle:hover {
+  text-decoration: underline;
+}
+
+/* Description input */
+.skill-description-input {
+  font-weight: 400 !important;
+}
+
+/* Visibility selector */
+.skill-visibility-selector {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.skill-visibility-selector label {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.skill-visibility-selector select {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.8125rem;
+  font-family: inherit;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  background-color: var(--surface-raised);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.skill-visibility-selector select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* Enabled toggle */
+.skill-enabled-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin-left: auto;
+}
+
+.skill-enabled-toggle label {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.skill-enabled-toggle input[type="checkbox"] {
+  cursor: pointer;
+}
+
+/* Shares management */
+.skill-shares-section {
+  padding: 0.5rem 0;
+}
+
+.skill-shares-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  margin-bottom: 0.75rem;
+}
+
+.skill-share-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.8125rem;
+}
+
+.skill-share-email {
+  color: var(--text);
+}
+
+.skill-share-name {
+  color: var(--text-secondary);
+  margin-left: 0.5rem;
+}
+
+.skill-add-share-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.skill-add-share-input {
+  flex: 1;
+}
+
+/* Type-ahead dropdown for user search */
+.share-typeahead-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--surface-overlay);
+  border: 1px solid var(--border-strong);
+  border-radius: 0.375rem;
+  box-shadow: var(--shadow-menu);
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 10;
+  margin-top: 0.25rem;
+}
+
+.share-typeahead-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.share-typeahead-option:hover {
+  background: var(--hover);
+}
+
+.share-typeahead-name {
+  color: var(--text);
+  font-weight: 500;
+  font-size: 0.8125rem;
+}
+
+.share-typeahead-email {
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+}
+
+/* Light mode: only the literal semantic status colour needs a darker,
+   higher-contrast variant on light grounds. */
+@media (prefers-color-scheme: light) {
+  .skill-badge-public { background: rgba(76, 175, 80, 0.1); color: #388e3c; }
+}

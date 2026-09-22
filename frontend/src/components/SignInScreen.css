@@ -1,0 +1,249 @@
+.sign-in-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100vh;
+  background-color: #242424;
+}
+
+.sign-in-card {
+  text-align: center;
+  max-width: 400px;
+  padding: 2rem;
+}
+
+.sign-in-title {
+  font-size: 2.5rem;
+  margin-bottom: 0.5rem;
+  color: rgba(255, 255, 255, 0.87);
+}
+
+.sign-in-subtitle {
+  color: rgba(255, 255, 255, 0.5);
+  margin-bottom: 2rem;
+  font-size: 1rem;
+}
+
+.sign-in-button {
+  display: inline-block;
+  padding: 0.75rem 2rem;
+  background-color: #4285f4;
+  color: white;
+  text-decoration: none;
+  border-radius: 6px;
+  font-size: 1rem;
+  font-weight: 500;
+  transition: background-color 0.15s;
+}
+
+.sign-in-button:hover {
+  background-color: #357abd;
+  color: white;
+}
+
+.sign-in-error {
+  color: #ff6b6b;
+  margin-bottom: 1rem;
+}
+
+.sign-in-loading {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.sign-in-note {
+  margin-top: 2rem;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 0.875rem;
+}
+
+.dev-login-section {
+  margin-top: 1.5rem;
+}
+
+.dev-login-divider {
+  display: flex;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.dev-login-divider::before,
+.dev-login-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+.dev-login-divider span {
+  padding: 0 0.75rem;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 0.875rem;
+}
+
+.dev-accounts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.dev-account-button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  padding: 0.6rem 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  background-color: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.87);
+  font-size: 0.95rem;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+
+.dev-account-button:hover {
+  border-color: #e6923a;
+  background-color: rgba(230, 146, 58, 0.1);
+}
+
+.dev-account-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dev-account-name {
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.dev-account-admin-badge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #e6923a;
+  border: 1px solid rgba(230, 146, 58, 0.6);
+  border-radius: 4px;
+  padding: 0 0.35rem;
+}
+
+.dev-account-email {
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.dev-login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.dev-login-input {
+  padding: 0.75rem 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  background-color: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.87);
+  font-size: 1rem;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.dev-login-input::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.dev-login-input:focus {
+  border-color: #e6923a;
+}
+
+.dev-login-button {
+  padding: 0.75rem 2rem;
+  background-color: #e6923a;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.dev-login-button:hover {
+  background-color: #cf7d2e;
+}
+
+.dev-login-button:disabled {
+  background-color: rgba(230, 146, 58, 0.5);
+  cursor: not-allowed;
+}
+
+.dev-login-note {
+  margin-top: 0.75rem;
+  color: rgba(255, 255, 255, 0.35);
+  font-size: 0.8rem;
+}
+
+@media (prefers-color-scheme: light) {
+  .sign-in-screen {
+    background-color: #ffffff;
+  }
+
+  .sign-in-title {
+    color: #213547;
+  }
+
+  .sign-in-subtitle {
+    color: rgba(0, 0, 0, 0.5);
+  }
+
+  .sign-in-note {
+    color: rgba(0, 0, 0, 0.4);
+  }
+
+  .sign-in-loading {
+    color: rgba(0, 0, 0, 0.5);
+  }
+
+  .dev-login-divider::before,
+  .dev-login-divider::after {
+    background-color: rgba(0, 0, 0, 0.15);
+  }
+
+  .dev-login-divider span {
+    color: rgba(0, 0, 0, 0.4);
+  }
+
+  .dev-login-input {
+    border-color: rgba(0, 0, 0, 0.2);
+    background-color: rgba(0, 0, 0, 0.03);
+    color: #213547;
+  }
+
+  .dev-login-input::placeholder {
+    color: rgba(0, 0, 0, 0.35);
+  }
+
+  .dev-login-note {
+    color: rgba(0, 0, 0, 0.35);
+  }
+
+  .dev-account-button {
+    border-color: rgba(0, 0, 0, 0.2);
+    background-color: rgba(0, 0, 0, 0.03);
+    color: #213547;
+  }
+
+  .dev-account-button:hover {
+    border-color: #e6923a;
+    background-color: rgba(230, 146, 58, 0.08);
+  }
+
+  .dev-account-email {
+    color: rgba(0, 0, 0, 0.45);
+  }
+}

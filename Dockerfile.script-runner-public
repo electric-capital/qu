@@ -1,0 +1,25 @@
+# Public-project sandbox image. A SEPARATE image from Dockerfile.script-runner
+# (not a mode switch) so the tooling in each can be customized independently:
+# this one leans toward internet workloads (fetching, scraping, API clients),
+# the restricted one toward internal-data processing.
+FROM python:3.12-slim
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends curl wget jq bash iptables zip unzip ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir requests httpx beautifulsoup4 lxml openpyxl python-docx matplotlib seaborn pypdf PyPDFForm
+
+ENV MPLBACKEND=Agg
+
+# Entrypoint script that opens internet egress while REJECTing all private /
+# link-local destinations (LAN, cloud metadata service), then drops
+# privileges. No socat proxy bridge: public containers have no path -- and
+# no credential -- to the Quest API.
+COPY script-runner-entry-public.sh /usr/local/bin/script-runner-entry-public.sh
+RUN chmod +x /usr/local/bin/script-runner-entry-public.sh
+
+WORKDIR /workspace
+
+ENTRYPOINT ["/usr/local/bin/script-runner-entry-public.sh"]
+CMD ["python3"]

@@ -1,0 +1,71 @@
+/* JsonView: JsonTreeViewer wrapped in a tool-section box with a copy button
+   (JsonView.tsx). Background/scroll/max-height come from .tool-section-content
+   in ToolUseMessage.css; here we restyle the embedded tree to sit flush in
+   that box (its standalone look targets the full-height FileViewerModal) and
+   style the copy button. */
+
+.json-view {
+  position: relative;
+  white-space: normal;
+}
+
+.json-view .json-tree-viewer {
+  padding: 0;
+  background-color: transparent;
+  min-height: 0;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: 1.5;
+  color: inherit;
+  overflow-x: visible;
+}
+
+/* Copy button: hidden until the box is hovered, mirrors .table-copy-btn.
+   Sticky so it stays visible while scrolling a tall blob. */
+.json-copy-btn {
+  position: sticky;
+  top: 0;
+  float: right;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.15s, visibility 0.15s;
+  z-index: 1;
+  padding: 0.25rem 0.45rem;
+  border-radius: 4px;
+  border: none;
+  background-color: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+}
+
+.json-view:hover .json-copy-btn {
+  opacity: 1;
+  visibility: visible;
+}
+
+.json-copy-btn:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+.json-copy-btn.copied {
+  background-color: rgba(76, 175, 80, 0.3);
+  color: #4caf50;
+}
+
+@media (prefers-color-scheme: light) {
+  .json-copy-btn {
+    background-color: rgba(0, 0, 0, 0.08);
+    color: rgba(0, 0, 0, 0.6);
+  }
+
+  .json-copy-btn:hover {
+    background-color: rgba(0, 0, 0, 0.15);
+  }
+
+  .json-copy-btn.copied {
+    background-color: rgba(76, 175, 80, 0.15);
+    color: #2e7d32;
+  }
+}

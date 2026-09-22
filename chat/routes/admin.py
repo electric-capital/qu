@@ -1,0 +1,1090 @@
+"""Admin operation endpoints."""
+
+import logging
+from datetime import date, datetime, timedelta, timezone
+from typing import Optional
+
+from fastapi import Depends, HTTPException, Request
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+
+from chat.auth import get_current_user_cookie_or_apikey_checked, is_admin
+from auth.config import COOKIE_NAME, COOKIE_SECURE, COOKIE_VERSION
+from auth.session import get_cookie_serializer, get_user_from_cookie
+from chat.storage import ChatStorage
+from db.conversation_store import (
+    get_conversations_with_users,
+    list_conversation_activity_rows,
+    list_latest_active_conversations,
+)
+from db.llm_call_store import (
+    get_latest_context_tokens_for_conversations,
+    get_most_expensive_conversations,
+    get_usage_by_model_for_conversations,
+    get_usage_by_user,
+)
+from db.guide_store import list_all_guides
+from db.project_store import list_all_project_guides
+from db.routine_store import get_routine_labels
+from db.user_store import get_user_by_id, list_all_users
+
+from chat.routes import router
+
+logger = logging.getLogger(__name__)
+
+
+class ImpersonateRequest(BaseModel):
+    user_id: int
+
+
+def _require_admin(user: dict) -> None:
+    """Raise 403 unless the requesting user is an admin."""
+    if not is_admin(user["email"]):
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "forbidden",
+                "message": "Admin access required.",
+            }
+        )
+
+
+@router.post("/admin/shutdown")
+async def admin_shutdown(
+    request: Request,
+    user: dict = Depends(get_current_user_cookie_or_apikey_checked),
+):
+    """Trigger a graceful server shutdown.
+
+    Only accessible to admin users (emails in server_config.json admin_emails).
+    Sets the shutdown event which triggers SIGTERM after a brief delay to allow
+    the HTTP response to be delivered.
+    """
+    if not is_admin(user["email"]):
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "forbidden",
+                "message": "Admin access required.",
+            }
+        )
+
+    logger.info("[admin] Shutdown requested by %s", user["email"])
+    request.app.state.shutdown_event.set()
+    return {"status": "shutting_down", "message": "Server shutdown initiated"}
+
+
+@router.get("/admin/users")
+async def admin_list_users(
+    include_self: bool = False,
+    user: dict = Depends(get_current_user_cookie_or_apikey_checked),
+):
+    """List all users for admin pickers.
+
+    The impersonation picker uses the default (requesting admin filtered
+    out -- you cannot impersonate yourself); the feature-gate access picker
+    passes ``include_self=true`` so admins can grant themselves access.
+    Only accessible to admin users.
+    """
+    if not is_admin(user["email"]):
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "forbidden",
+                "message": "Admin access required.",
+            }
+        )
+
+    users = await list_all_users()
+    if not include_self:
+        users = [u for u in users if u["id"] != user["id"]]
+    return {"users": users}
+
+
+@router.post("/admin/impersonate")
+async def admin_impersonate(
+    body: ImpersonateRequest,
+    user: dict = Depends(get_current_user_cookie_or_apikey_checked),
+):
+    """Start impersonating another user.
+
+    Only accessible to admin users. Sets a new session cookie with both
+    the target user's ID and the admin's ID.
+    """
+    if not is_admin(user["email"]):
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "forbidden",
+                "message": "Admin access required.",
+            }
+        )
+
+    # Prevent nested impersonation
+    if user.get("_impersonator_uid"):
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "already_impersonating",
+                "message": "Already impersonating. Stop current impersonation first.",
+            }
+        )
+
+    # Validate target user exists
+    target_user = await get_user_by_id(body.user_id)
+    if not target_user:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "user_not_found",
+                "message": "Target user not found.",
+            }
+        )
+
+    logger.info("[admin] %s started impersonating %s", user["email"], target_user["email"])
+
+    # Create impersonation cookie
+    signed_payload = get_cookie_serializer().dumps({
+        "v": COOKIE_VERSION,
+        "uid": target_user["id"],
+        "imp": user["id"],
+    })
+
+    response = JSONResponse({
+        "success": True,
+        "impersonating": {
+            "id": target_user["id"],
+            "email": target_user["email"],
+            "name": target_user.get("name", ""),
+        },
+    })
+    response.set_cookie(
+        key=COOKIE_NAME,
+        value=signed_payload,
+        httponly=True,
+        max_age=60 * 60,  # 1 hour (shorter than normal 30-day session)
+        samesite="lax",
+        secure=COOKIE_SECURE,
+    )
+    return response
+
+
+@router.get("/admin/system-monitor/latest-active-conversations")
+async def admin_latest_active_conversations(
+    limit: int = 20,
+    include_routines: bool = True,
+    user: dict = Depends(get_current_user_cookie_or_apikey_checked),
+):
+    """Return the most recently active conversations across all users.
+
+    "Active" is keyed off ``conversations.last_message_at``, which the
+    storage layer bumps for user input, model output, and tool-call
+    completion -- the three signals the operator dashboard cares about.
+    ``include_routines=false`` filters out routine-created conversations
+    (``routine_id`` set) server-side so the list stays full-length.
+    """
+    if not is_admin(user["email"]):
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "forbidden",
+                "message": "Admin access required.",
+            }
+        )
+
+    # Cap at 100 so a crafted query string can't fan out into a giant scan.
+    if limit < 1:
+        limit = 1
+    elif limit > 100:
+        limit = 100
+
+    rows = await list_latest_active_conversations(
+        limit=limit, include_routines=include_routines
+    )
+
+    # One grouped query per raw provider table for the whole displayed batch
+    # (avoids N+1): per-conversation, per-model native token sums plus a
+    # coarse conversation total, and the latest top-level call's context size.
+    conversation_ids = [row["id"] for row in rows]
+    usage_by_conversation = await get_usage_by_model_for_conversations(
+        conversation_ids
+    )
+    context_by_conversation = await get_latest_context_tokens_for_conversations(
+        conversation_ids
+    )
+
+    conversations = []
+    for row in rows:
+        usage = usage_by_conversation.get(row["id"], _EMPTY_USAGE)
+        conversations.append(_admin_conversation_view(
+            row["id"], row, usage,
+            context_by_conversation.get(row["id"]),
+        ))
+    return {"conversations": conversations}
+
+
+_EMPTY_USAGE = {
+    "models": [],
+    "total": {"call_count": 0, "total_tokens": 0, "estimated_cost_usd": 0.0},
+}
+
+
+def _admin_conversation_view(
+    conversation_id: str,
+    row: Optional[dict],
+    usage: dict,
+    latest_context_tokens: Optional[int],
+    owner: Optional[dict] = None,
+) -> dict:
+    """Assemble one system-reports conversation row for the JSON response.
+
+    Shared by the latest-active and most-expensive endpoints so both tables
+    render the same shape. ``row`` is the conversation+user join row, or
+    None when the conversation has been deleted (cost analytics outlives
+    deletion) -- the title becomes a placeholder and identity comes from
+    ``owner`` (a users-table row resolved from the call rows' user_id), when
+    the caller could resolve one.
+    """
+    if row is not None:
+        title = ChatStorage._resolve_list_title(conversation_id, row)
+    else:
+        title = "(deleted conversation)"
+        if owner is not None:
+            row = {
+                "user_id": owner["id"],
+                "user_email": owner["email"],
+                "user_name": owner.get("name") or "",
+            }
+    row = row or {}
+    return {
+        "id": conversation_id,
+        "title": title,
+        "user_id": row.get("user_id"),
+        "user_email": row.get("user_email", ""),
+        "user_name": row.get("user_name", ""),
+        "project_id": row.get("project_id"),
+        "routine_id": row.get("routine_id"),
+        "last_message_at": row.get("last_message_at"),
+        "origin": row.get("origin"),
+        "last_model": row.get("last_model"),
+        "usage_by_model": usage["models"],
+        "usage_total": usage["total"],
+        "latest_context_tokens": latest_context_tokens,
+        # Distinct UTC days with at least one user message, over the whole
+        # conversation lifetime (not clipped to a query window).
+        "active_days": ChatStorage.count_user_message_active_days(conversation_id),
+    }
+
+
+def _parse_range_date(value: Optional[str], param: str) -> Optional[date]:
+    if value is None or value == "":
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "invalid_params",
+                "message": f"{param} must be an ISO date (YYYY-MM-DD).",
+            }
+        )
+
+
+def _resolve_range_window(
+    start: Optional[str], end: Optional[str]
+) -> tuple[Optional[date], Optional[date], Optional[datetime], Optional[datetime]]:
+    """Parse the shared start/end query params of the ranged report endpoints.
+
+    ``start``/``end`` are inclusive ISO dates interpreted in UTC (the
+    timezone the ``llm_calls_*`` rows are stamped in); either may be omitted
+    for an open-ended range. Returns the parsed dates plus the half-open
+    ``[start_dt, end_dt)`` datetime window for the call-row queries (the
+    inclusive end date becomes an exclusive bound at the next midnight).
+    Raises 400 on malformed or reversed dates.
+    """
+    start_date = _parse_range_date(start, "start")
+    end_date = _parse_range_date(end, "end")
+    if start_date and end_date and start_date > end_date:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "invalid_params",
+                "message": "start must not be after end.",
+            }
+        )
+    start_dt = (
+        datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc)
+        if start_date else None
+    )
+    end_dt = (
+        datetime.combine(end_date + timedelta(days=1), datetime.min.time(),
+                         tzinfo=timezone.utc)
+        if end_date else None
+    )
+    return start_date, end_date, start_dt, end_dt
+
+
+@router.get("/admin/system-monitor/most-expensive-conversations")
+async def admin_most_expensive_conversations(
+    start: Optional[str] = None,
+    end: Optional[str] = None,
+    limit: int = 30,
+    user: dict = Depends(get_current_user_cookie_or_apikey_checked),
+):
+    """Return the conversations with the highest estimated cost in a date range.
+
+    ``start``/``end`` are inclusive ISO dates interpreted in UTC (the
+    timezone the ``llm_calls_*`` rows are stamped in); either may be
+    omitted for an open-ended range. Ranking sums each conversation's
+    priced per-model estimates over calls inside the range
+    (db/llm_call_store.py get_most_expensive_conversations); conversations
+    deleted since are still listed, attributed via the call rows' user_id.
+    """
+    if not is_admin(user["email"]):
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "forbidden",
+                "message": "Admin access required.",
+            }
+        )
+
+    _start_date, _end_date, start_dt, end_dt = _resolve_range_window(start, end)
+
+    # Cap at 100, same guard as the latest-active endpoint.
+    if limit < 1:
+        limit = 1
+    elif limit > 100:
+        limit = 100
+
+    ranked = await get_most_expensive_conversations(
+        start=start_dt, end=end_dt, limit=limit
+    )
+    conversation_ids = [entry["conversation_id"] for entry in ranked]
+    rows_by_id = await get_conversations_with_users(conversation_ids)
+    context_by_conversation = await get_latest_context_tokens_for_conversations(
+        conversation_ids
+    )
+
+    # Owner fallback for deleted conversations: the call rows still carry
+    # user_id, so spend stays attributed. One lookup per distinct missing
+    # owner (rare).
+    fallback_users: dict[int, Optional[dict]] = {}
+    conversations = []
+    for entry in ranked:
+        conv_id = entry["conversation_id"]
+        row = rows_by_id.get(conv_id)
+        owner = None
+        if row is None and entry["user_id"] is not None:
+            owner_id = entry["user_id"]
+            if owner_id not in fallback_users:
+                fallback_users[owner_id] = await get_user_by_id(owner_id)
+            owner = fallback_users[owner_id]
+        conversations.append(_admin_conversation_view(
+            conv_id, row,
+            {"models": entry["models"], "total": entry["total"]},
+            context_by_conversation.get(conv_id),
+            owner=owner,
+        ))
+    return {"conversations": conversations}
+
+
+# Zero-activity placeholder so every user in the roster gets a full row.
+_EMPTY_USER_USAGE = {
+    "models": [],
+    "total": {"call_count": 0, "total_tokens": 0, "estimated_cost_usd": 0.0},
+    "conversation_count": 0,
+    "routine_conversation_count": 0,
+    "cost_excluding_routines_usd": 0.0,
+    "cost_routines_usd": 0.0,
+    "known_cost_usd": 0.0,
+    "routines": [],
+}
+
+
+def _routine_cost_view(routine_usage: dict, label: Optional[dict]) -> dict:
+    """Project one per-routine cost entry of the user report.
+
+    ``label`` is the routine's name/project lookup (``get_routine_labels``);
+    None only if the routine vanished between the conversation scan and the
+    label query (routine deletes SET NULL the conversations' ``routine_id``,
+    so a missing label is a race, not a steady state) -- such a row keeps
+    its spend under a placeholder name.
+    """
+    return {
+        "routine_id": routine_usage["routine_id"],
+        "routine_name": label["name"] if label else "(deleted routine)",
+        "project_id": label["project_id"] if label else None,
+        "project_name": label["project_name"] if label else None,
+        "conversation_count": routine_usage["conversation_count"],
+        "cost_usd": routine_usage["cost_usd"],
+    }
+
+
+@router.get("/admin/system-monitor/user-report")
+async def admin_user_report(
+    start: Optional[str] = None,
+    end: Optional[str] = None,
+    user: dict = Depends(get_current_user_cookie_or_apikey_checked),
+):
+    """Return per-user activity and cost aggregates for a date range.
+
+    One row per user (the whole roster -- zero-activity users keep their
+    row), sorted by known in-range cost. Token/cost aggregation windows on
+    the ``llm_calls_*`` rows' ``created_at`` like the most-expensive
+    endpoint; the routine/non-routine split comes from the surviving
+    conversation rows' ``routine_id`` (calls of deleted conversations count
+    as non-routine -- routine provenance dies with the row), and the routine
+    half is additionally broken out per routine (``routine_costs``, labeled
+    with the routine + project names, most expensive first) so the
+    priciest routines stand out. ``active_days`` is the union of distinct
+    UTC user-message days across the user's non-routine conversations,
+    clipped to the range (read from chat_history.json, so deleted
+    conversations contribute none).
+    """
+    if not is_admin(user["email"]):
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "forbidden",
+                "message": "Admin access required.",
+            }
+        )
+
+    start_date, end_date, start_dt, end_dt = _resolve_range_window(start, end)
+
+    conv_rows = await list_conversation_activity_rows()
+    routine_by_conv = {
+        row["id"]: row["routine_id"] for row in conv_rows if row["routine_id"]
+    }
+    usage_by_user = await get_usage_by_user(
+        start=start_dt, end=end_dt, routine_id_by_conversation=routine_by_conv
+    )
+    # One batched label lookup for every routine that appears in any
+    # user's breakdown (routine name + owning project name).
+    seen_routine_ids = {
+        r["routine_id"]
+        for usage in usage_by_user.values()
+        for r in usage["routines"]
+    }
+    routine_labels = await get_routine_labels(seen_routine_ids)
+
+    # Range-clipped active days, unioned per user across non-routine
+    # conversations so a day spent in three chats counts once. The
+    # created_at/last_message_at bounds prune chat-history reads that
+    # cannot overlap the window.
+    start_day = start_date.isoformat() if start_date else None
+    end_day = end_date.isoformat() if end_date else None
+    active_days_by_user: dict[int, set] = {}
+    for row in conv_rows:
+        if row["routine_id"]:
+            continue
+        created, last = row["created_at"], row["last_message_at"]
+        if end_day and created is not None and created.date().isoformat() > end_day:
+            continue
+        if start_day and last is not None and last.date().isoformat() < start_day:
+            continue
+        days = ChatStorage.user_message_active_days(row["id"], start_day, end_day)
+        if days:
+            active_days_by_user.setdefault(row["user_id"], set()).update(days)
+
+    users_by_id = {u["id"]: u for u in await list_all_users()}
+    # Call rows outlive user deletion; keep such spend visible on a
+    # placeholder row rather than dropping it.
+    report_user_ids = set(users_by_id) | set(usage_by_user) | set(active_days_by_user)
+
+    rows = []
+    for user_id in report_user_ids:
+        info = users_by_id.get(user_id)
+        usage = usage_by_user.get(user_id, _EMPTY_USER_USAGE)
+        rows.append({
+            "user_id": user_id,
+            "user_email": info["email"] if info else "",
+            "user_name": (info.get("name") or "") if info else "(unknown user)",
+            "active_days": len(active_days_by_user.get(user_id, ())),
+            "conversation_count": usage["conversation_count"],
+            "routine_conversation_count": usage["routine_conversation_count"],
+            "cost_excluding_routines_usd": usage["cost_excluding_routines_usd"],
+            "cost_routines_usd": usage["cost_routines_usd"],
+            "routine_costs": [
+                _routine_cost_view(r, routine_labels.get(r["routine_id"]))
+                for r in usage["routines"]
+            ],
+            "usage_by_model": usage["models"],
+            "usage_total": usage["total"],
+            "_known_cost": usage["known_cost_usd"],
+        })
+    rows.sort(key=lambda r: (
+        -r["_known_cost"],
+        -r["usage_total"]["total_tokens"],
+        -r["active_days"],
+        r["user_email"],
+    ))
+    for row in rows:
+        del row["_known_cost"]
+    return {"users": rows}
+
+
+@router.get("/admin/system-monitor/guides-report")
+async def admin_guides_report(
+    user: dict = Depends(get_current_user_cookie_or_apikey_checked),
+):
+    """Return every guide in the system, user guides and project guides alike.
+
+    Deprecation-tracking report: guides are being retired in favor of
+    skills, and this lists who still has them. One row per user guide
+    (``kind="user"``: the ``guides`` table, incl. the empty auto-created
+    default guides so an admin can tell "has a default row" from "wrote
+    instructions") and one row per project with non-empty project
+    instructions (``kind="project"``: the ``projects.guide`` text field).
+    Content is reported as ``content_length`` -- the admin needs owners and
+    names, not the prompt text. ``routine_count`` (user guides only) is the
+    number of routines still using the guide as an override, the last
+    remaining code path that applies a guide to new conversations.
+    Sorted by owner email, then user guides (default first) before project
+    guides, then name.
+    """
+    if not is_admin(user["email"]):
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "forbidden",
+                "message": "Admin access required.",
+            }
+        )
+
+    rows = []
+    for guide in await list_all_guides():
+        rows.append({
+            "kind": "user",
+            "id": guide["id"],
+            "name": guide["name"],
+            "user_id": guide["user_id"],
+            "user_email": guide["user_email"],
+            "user_name": guide["user_name"],
+            "is_default": guide["is_default"],
+            "project_id": None,
+            "public": None,
+            "content_length": guide["content_length"],
+            "routine_count": guide["routine_count"],
+            "created_at": guide["created_at"],
+            "updated_at": guide["updated_at"],
+        })
+    for project in await list_all_project_guides():
+        rows.append({
+            "kind": "project",
+            "id": project["id"],
+            "name": project["name"],
+            "user_id": project["user_id"],
+            "user_email": project["user_email"],
+            "user_name": project["user_name"],
+            "is_default": None,
+            "project_id": project["id"],
+            "public": project["public"],
+            "content_length": project["content_length"],
+            "routine_count": None,
+            "created_at": project["created_at"],
+            "updated_at": project["updated_at"],
+        })
+    rows.sort(key=lambda r: (
+        r["user_email"],
+        0 if r["kind"] == "user" else 1,
+        0 if r["is_default"] else 1,
+        r["name"].lower(),
+    ))
+    return {"guides": rows}
+
+
+# ---------------------------------------------------------------------------
+# Service credentials (server-level upstream API credentials)
+# ---------------------------------------------------------------------------
+
+def _effective_service_credentials(service: str) -> tuple[dict | None, str | None]:
+    """Return (credentials, source) with the per-service store preferred.
+
+    source is "store", "legacy", or None when the service is unconfigured.
+    """
+    from config.service_credentials import (
+        read_legacy_service_credentials,
+        read_service_credentials,
+    )
+
+    stored = read_service_credentials(service)
+    if stored:
+        return stored, "store"
+    legacy = read_legacy_service_credentials(service)
+    if legacy:
+        return legacy, "legacy"
+    return None, None
+
+
+def _service_credential_detail(service: str) -> dict:
+    """Schema-driven admin payload for one service (core or plugin).
+
+    ``fields`` is the CredentialField schema the frontend renders the card
+    from; ``credentials`` is the masked form view (secrets only appear as
+    ``<key>_set`` booleans). Raises 404 for services no spec describes.
+    """
+    from config.service_specs import fields_view, form_view, get_service_spec
+
+    spec = get_service_spec(service)
+    if spec is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "unknown_service",
+                "message": f"Unknown service: {service}",
+            },
+        )
+    config, source = _effective_service_credentials(service)
+    return {
+        "service": service,
+        "label": spec.label,
+        "configured": config is not None and bool(spec.is_configured(config)),
+        "source": source,
+        "fields": fields_view(spec),
+        "credentials": form_view(spec, config),
+    }
+
+
+@router.get("/admin/service-credentials")
+async def admin_list_service_credentials(
+    user: dict = Depends(get_current_user_cookie_or_apikey_checked),
+):
+    """List every credential service (core + plugins) with schema and form view.
+
+    The frontend renders one generic card per entry from this single
+    response; there are no per-service endpoints or components.
+    """
+    _require_admin(user)
+    from config.service_specs import all_service_specs
+
+    return {
+        "services": [
+            _service_credential_detail(spec.service) for spec in all_service_specs()
+        ]
+    }
+
+
+@router.get("/admin/service-credentials/{service}")
+async def admin_get_service_credentials(
+    service: str,
+    user: dict = Depends(get_current_user_cookie_or_apikey_checked),
+):
+    """Return one service's credential schema and form values (secrets masked)."""
+    _require_admin(user)
+    return _service_credential_detail(service)
+
+
+@router.put("/admin/service-credentials/{service}")
+async def admin_update_service_credentials(
+    service: str,
+    body: dict,
+    user: dict = Depends(get_current_user_cookie_or_apikey_checked),
+):
+    """Generic schema-validated save for any credential service.
+
+    The body is a flat ``{field key: value}`` object validated against the
+    service's CredentialField schema (unknown keys rejected, ``required``/
+    ``required_if`` enforced, empty secret keeps the stored one). Starts
+    from the currently effective config (store first, then the legacy
+    location) so unrecognized stored keys survive a save.
+    """
+    _require_admin(user)
+    from config.service_credentials import write_service_credentials
+    from config.service_specs import get_service_spec, resolve_update
+
+    spec = get_service_spec(service)
+    if spec is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "unknown_service",
+                "message": f"Unknown service: {service}",
+            },
+        )
+    existing, _source = _effective_service_credentials(service)
+    try:
+        stored = resolve_update(spec, body, existing)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "invalid_params", "message": str(exc)},
+        )
+    write_service_credentials(service, stored)
+    logger.info("[admin] %s updated %s service credentials", user["email"], service)
+    return _service_credential_detail(service)
+
+
+# ---------------------------------------------------------------------------
+# Feature gates (server-global on/off switches for optional features)
+# ---------------------------------------------------------------------------
+
+
+class FeatureGateUpdate(BaseModel):
+    enabled: bool
+    # Per-user access list (features in PER_USER_ACCESS_FEATURES only):
+    # a list restricts the enabled feature to those user emails, an explicit
+    # null opens it to all users, and omitting the field keeps the stored
+    # list unchanged (so plain on/off toggles never wipe the selection).
+    allowed_users: Optional[list[str]] = None
+
+
+def _feature_gate_view(feature: str, gates: dict[str, dict]) -> dict:
+    from config.feature_gates import FEATURE_LABELS, PER_USER_ACCESS_FEATURES
+
+    labels = FEATURE_LABELS.get(feature, {})
+    gate = gates.get(feature) or {"enabled": False, "allowed_users": None}
+    return {
+        "feature": feature,
+        "label": labels.get("label", feature),
+        "description": labels.get("description", ""),
+        "enabled": gate["enabled"],
+        # None = every user has access while the gate is on.
+        "allowed_users": gate["allowed_users"],
+        "supports_user_access": feature in PER_USER_ACCESS_FEATURES,
+    }
+
+
+@router.get("/admin/feature-gates")
+async def admin_list_feature_gates(
+    user: dict = Depends(get_current_user_cookie_or_apikey_checked),
+):
+    """List all gateable features with their server-global on/off state."""
+    _require_admin(user)
+    from config.feature_gates import KNOWN_FEATURES, read_feature_gates
+
+    gates = read_feature_gates()
+    return {
+        "features": [
+            _feature_gate_view(feature, gates) for feature in KNOWN_FEATURES
+        ]
+    }
+
+
+@router.put("/admin/feature-gates/{feature}")
+async def admin_update_feature_gate(
+    feature: str,
+    body: FeatureGateUpdate,
+    user: dict = Depends(get_current_user_cookie_or_apikey_checked),
+):
+    """Update one feature gate (persisted in data/feature_gates.json).
+
+    ``enabled`` flips the gate; ``allowed_users`` (only for features that
+    support per-user access) restricts it to specific user emails, with an
+    explicit null meaning all users and an omitted field keeping the stored
+    list unchanged.
+    """
+    _require_admin(user)
+    from config.feature_gates import (
+        KNOWN_FEATURES,
+        PER_USER_ACCESS_FEATURES,
+        set_feature_allowed_users,
+        set_feature_enabled,
+    )
+
+    if feature not in KNOWN_FEATURES:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "unknown_feature",
+                "message": f"Unknown feature: {feature}",
+            },
+        )
+    allowed_users_provided = "allowed_users" in body.model_fields_set
+    if allowed_users_provided and body.allowed_users is not None:
+        if feature not in PER_USER_ACCESS_FEATURES:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "invalid_params",
+                    "message": (
+                        f"Feature '{feature}' does not support per-user access"
+                    ),
+                },
+            )
+        bad = [e for e in body.allowed_users if "@" not in str(e).strip()]
+        if bad:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "invalid_params",
+                    "message": f"Not an email address: {bad[0]!r}",
+                },
+            )
+    gates = set_feature_enabled(feature, body.enabled)
+    if allowed_users_provided:
+        gates = set_feature_allowed_users(feature, body.allowed_users)
+    logger.info(
+        "[admin] %s turned feature gate '%s' %s (access: %s)",
+        user["email"], feature, "on" if body.enabled else "off",
+        "all users" if gates[feature]["allowed_users"] is None
+        else f"{len(gates[feature]['allowed_users'])} user(s)",
+    )
+    return _feature_gate_view(feature, gates)
+
+
+class InferenceProviderKeyUpdate(BaseModel):
+    # Empty string means "keep the currently stored key" so the masked read
+    # endpoint round-trips without ever sending the key back out.
+    api_key: str = ""
+
+
+def _models_for_backend(backend: str) -> list[dict]:
+    """Non-deprecated MODEL_REGISTRY entries served by ``backend``.
+
+    ``family`` distinguishes the two Vertex model groups (Claude vs Gemini)
+    because they are configured -- and break -- independently; it is None
+    for single-family API-key providers. ``status`` is the
+    latest model-health verdict from the store (populated by the startup
+    sweep and admin rechecks), or None when the model was never checked.
+    """
+    from chat.llm.config import MODEL_REGISTRY, get_backend_for_model
+    from chat.llm.health import get_model_health_store
+
+    statuses = get_model_health_store().get_all()
+    models = []
+    for model_id, entry in MODEL_REGISTRY.items():
+        if entry.get("deprecated"):
+            continue
+        if get_backend_for_model(model_id) != backend:
+            continue
+        family = None
+        if backend == "vertex":
+            family = (
+                "anthropic" if entry["provider"] == "anthropic" else "gemini_vertex"
+            )
+        models.append({
+            "id": model_id,
+            "display_name": entry.get("display_name", model_id),
+            "family": family,
+            "status": statuses.get(model_id),
+        })
+    return models
+
+
+def _api_key_provider_status(provider: str) -> dict:
+    """Status entry for one editable API-key inference provider (key masked)."""
+    from config.inference_providers import API_KEY_PROVIDERS, effective_api_key
+
+    spec = API_KEY_PROVIDERS[provider]
+    api_key, source = effective_api_key(provider)
+    backend = spec.get("model_backend")
+    return {
+        "provider": provider,
+        "label": spec["label"],
+        "kind": "api_key",
+        "configured": api_key is not None,
+        "source": source,
+        "credentials": {"api_key_set": api_key is not None},
+        "hint": spec["hint"],
+        "models": _models_for_backend(backend) if backend else [],
+    }
+
+
+@router.get("/admin/inference-providers")
+async def admin_list_inference_providers(
+    user: dict = Depends(get_current_user_cookie_or_apikey_checked),
+):
+    """List inference providers: detected Vertex environment + API-key providers.
+
+    The Vertex entry is display-only (credentials and project/region are
+    detected from the environment and server_config.json); API-key entries
+    are editable via the PUT endpoint and never include the key itself.
+    """
+    _require_admin(user)
+    from config.inference_providers import (
+        API_KEY_PROVIDERS,
+        vertex_environment_status,
+    )
+
+    vertex = vertex_environment_status()
+    providers = [{
+        "provider": "vertex",
+        "label": "Google Vertex AI",
+        "kind": "detected",
+        "configured": vertex["configured"],
+        "detail": vertex,
+        "models": _models_for_backend("vertex"),
+    }]
+    providers.extend(
+        _api_key_provider_status(provider) for provider in API_KEY_PROVIDERS
+    )
+    return {"providers": providers}
+
+
+@router.put("/admin/inference-providers/{provider}")
+async def admin_update_inference_provider_key(
+    provider: str,
+    body: InferenceProviderKeyUpdate,
+    user: dict = Depends(get_current_user_cookie_or_apikey_checked),
+):
+    """Save an API-key inference provider's key to the per-provider store.
+
+    An empty api_key keeps the currently effective key (which also moves a
+    legacy server_credentials.json key into the store). The Vertex entry is
+    not editable -- its configuration is detected from the environment.
+    """
+    _require_admin(user)
+    from config.inference_providers import (
+        API_KEY_PROVIDERS,
+        effective_api_key,
+        read_inference_credentials,
+        write_inference_credentials,
+    )
+
+    if provider == "vertex":
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "not_editable",
+                "message": "Vertex AI configuration is detected from the "
+                           "environment and cannot be edited here.",
+            }
+        )
+    if provider not in API_KEY_PROVIDERS:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "unknown_provider",
+                "message": f"Unknown inference provider: {provider}",
+            }
+        )
+
+    api_key = body.api_key.strip()
+    if not api_key:
+        api_key, _source = effective_api_key(provider)
+        if not api_key:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "invalid_params",
+                    "message": "api_key is required (no stored key to keep).",
+                }
+            )
+
+    # Start from the stored file so unrecognized keys survive a save.
+    config = dict(read_inference_credentials(provider) or {})
+    config["api_key"] = api_key
+    write_inference_credentials(provider, config)
+
+    # Drop cached SDK clients so the new key is used on the next session
+    # instead of after the next restart.
+    from chat.llm.config import reset_provider_client_caches
+    reset_provider_client_caches()
+
+    # Recheck this backend's models in the background: a failing verdict
+    # recorded under the old key hides them from the picker
+    # (get_available_models() is health-filtered), and only a fresh check
+    # under the new key can bring them back.
+    from chat.llm.health import schedule_model_rechecks
+
+    backend = API_KEY_PROVIDERS[provider].get("model_backend")
+    if backend:
+        schedule_model_rechecks([m["id"] for m in _models_for_backend(backend)])
+
+    logger.info("[admin] %s updated %s inference credentials", user["email"], provider)
+    return _api_key_provider_status(provider)
+
+
+class InferenceModelTestRequest(BaseModel):
+    model: str
+
+
+@router.post("/admin/inference-providers/test-model")
+async def admin_test_inference_model(
+    body: InferenceModelTestRequest,
+    user: dict = Depends(get_current_user_cookie_or_apikey_checked),
+):
+    """Re-run the live health check for one model and update the store.
+
+    Backs the per-model recheck in Settings > Inference Providers: a model
+    can look configured (credentials present, project set) yet still fail at
+    send time -- most commonly a Claude model never enabled in Vertex Model
+    Garden, or exhausted quota. The verdict is recorded in the server-global
+    model-health store (the same one the startup sweep fills) and returned as
+    ``{model, ok, error, checked_at}``; failures come back as data with the
+    provider's explanation extracted, not as an HTTP error.
+    """
+    _require_admin(user)
+    from chat.llm.config import MODEL_REGISTRY
+    from chat.llm.health import get_model_health_store
+
+    if body.model not in MODEL_REGISTRY:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "unknown_model",
+                "message": f"Unknown model: {body.model}",
+            }
+        )
+    result = await get_model_health_store().run_check(body.model)
+    logger.info(
+        "[admin] %s health-checked model %s: %s",
+        user["email"], body.model, "ok" if result["ok"] else result["error"],
+    )
+    return result
+
+
+@router.post("/admin/stop-impersonation")
+async def admin_stop_impersonation(
+    request: Request,
+):
+    """Stop impersonating and return to the admin's own session.
+
+    Reads the current cookie to extract the impersonator's user ID,
+    then sets a new cookie with just the admin's identity.
+    """
+    signed_cookie = request.cookies.get(COOKIE_NAME)
+    if not signed_cookie:
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "error": "not_authenticated",
+                "message": "No session cookie found.",
+            }
+        )
+
+    user = await get_user_from_cookie(signed_cookie)
+    if not user:
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "error": "not_authenticated",
+                "message": "Invalid session.",
+            }
+        )
+
+    impersonator_uid = user.get("_impersonator_uid")
+    if not impersonator_uid:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "not_impersonating",
+                "message": "Not currently impersonating.",
+            }
+        )
+
+    logger.info(
+        "[admin] %s stopped impersonating %s",
+        user.get("_impersonator_email", "unknown"),
+        user["email"],
+    )
+
+    # Create a normal (non-impersonation) cookie for the admin
+    signed_payload = get_cookie_serializer().dumps({
+        "v": COOKIE_VERSION,
+        "uid": impersonator_uid,
+    })
+
+    response = JSONResponse({"success": True})
+    response.set_cookie(
+        key=COOKIE_NAME,
+        value=signed_payload,
+        httponly=True,
+        max_age=60 * 60 * 24 * 30,  # 30 days (normal session)
+        samesite="lax",
+        secure=COOKIE_SECURE,
+    )
+    return response

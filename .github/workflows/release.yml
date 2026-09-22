@@ -1,0 +1,39 @@
+name: Release
+
+# Publishes a GitHub Release for every v<MAJOR>.<MINOR>.<PATCH> tag pushed
+# by scripts/tag_release.py. The running app reads the same tag at startup
+# (config/version.py) to show the version in Settings > About.
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+      - "v[0-9]+.[0-9]+.[0-9]+-*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Publish release with generated notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          prerelease_flag=""
+          if [[ "$TAG" == *-* ]]; then
+            prerelease_flag="--prerelease"
+          fi
+          previous="$(git tag --list 'v[0-9]*' --sort=-v:refname | grep -vx "$TAG" | head -n 1 || true)"
+          notes_args=(--generate-notes)
+          if [[ -n "$previous" ]]; then
+            notes_args+=(--notes-start-tag "$previous")
+          fi
+          gh release create "$TAG" --title "$TAG" --verify-tag $prerelease_flag "${notes_args[@]}"

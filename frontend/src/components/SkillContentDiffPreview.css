@@ -1,0 +1,192 @@
+/* Line diff shown inside edit_skill approval cards (content edits). */
+
+/* The generic preview fields are flex rows (key left, value right); the
+   diff needs the full card width, so its field stacks instead. Applies to
+   both the chat card and the Requests pane variants. */
+.action-request-preview-field.skill-diff-field,
+.request-preview-field.skill-diff-field {
+  display: block;
+  min-width: 0;
+}
+
+.skill-diff-scroll {
+  overflow-x: auto;
+  margin-top: 0.5rem;
+  max-width: 100%;
+  border: 1px solid #3a3a6a;
+  border-radius: 4px;
+}
+
+.skill-diff-table {
+  border-collapse: collapse;
+  font-size: 0.78rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  width: 100%;
+}
+
+.skill-diff-table td {
+  padding: 0.1rem 0.45rem;
+  vertical-align: top;
+}
+
+/* Old / new line-number gutters. */
+.skill-diff-gutter {
+  color: rgba(255, 255, 255, 0.35);
+  text-align: right;
+  user-select: none;
+  min-width: 2.2em;
+  border-right: 1px solid #3a3a6a;
+  background-color: rgba(255, 255, 255, 0.03);
+}
+
+.skill-diff-marker {
+  user-select: none;
+  width: 1em;
+  text-align: center;
+}
+
+.skill-diff-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  width: 100%;
+}
+
+.skill-diff-line.context .skill-diff-text {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.skill-diff-line.del {
+  background-color: rgba(255, 100, 100, 0.1);
+}
+
+.skill-diff-line.del .skill-diff-marker,
+.skill-diff-line.del .skill-diff-text {
+  color: rgba(255, 140, 140, 0.9);
+}
+
+.skill-diff-line.add {
+  background-color: rgba(80, 200, 120, 0.12);
+}
+
+.skill-diff-line.add .skill-diff-marker,
+.skill-diff-line.add .skill-diff-text {
+  color: #7fdc9a;
+}
+
+/* "N unchanged lines" separators between collapsed hunks. */
+.skill-diff-separator td {
+  color: rgba(255, 255, 255, 0.4);
+  text-align: center;
+  font-size: 0.72rem;
+  padding: 0.2rem 0.5rem;
+  background-color: rgba(255, 255, 255, 0.03);
+  border-top: 1px solid #3a3a6a;
+  border-bottom: 1px solid #3a3a6a;
+}
+
+.skill-diff-table tr:first-child.skill-diff-separator td {
+  border-top: none;
+}
+
+.skill-diff-table tr:last-child.skill-diff-separator td {
+  border-bottom: none;
+}
+
+/* Footer: +N / -M stats plus the expand toggle. */
+.skill-diff-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 0.4rem;
+  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.skill-diff-stat-add {
+  color: #7fdc9a;
+}
+
+.skill-diff-stat-del {
+  color: rgba(255, 140, 140, 0.9);
+}
+
+.skill-diff-toggle {
+  background: none;
+  border: 1px solid #3a3a6a;
+  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 0.72rem;
+  padding: 0.15rem 0.5rem;
+  cursor: pointer;
+}
+
+.skill-diff-toggle:hover {
+  color: rgba(255, 255, 255, 0.9);
+  border-color: #55558a;
+}
+
+/* Light mode support (base styles above are dark-first, matching
+   ActionRequestMessage.css / RequestsView.css). */
+@media (prefers-color-scheme: light) {
+  .skill-diff-scroll {
+    border-color: #d8d8e4;
+  }
+
+  .skill-diff-gutter {
+    color: rgba(0, 0, 0, 0.35);
+    border-right-color: #d8d8e4;
+    background-color: rgba(0, 0, 0, 0.02);
+  }
+
+  .skill-diff-line.context .skill-diff-text {
+    color: rgba(0, 0, 0, 0.6);
+  }
+
+  .skill-diff-line.del {
+    background-color: rgba(192, 48, 48, 0.08);
+  }
+
+  .skill-diff-line.del .skill-diff-marker,
+  .skill-diff-line.del .skill-diff-text {
+    color: #c03030;
+  }
+
+  .skill-diff-line.add {
+    background-color: rgba(26, 127, 55, 0.08);
+  }
+
+  .skill-diff-line.add .skill-diff-marker,
+  .skill-diff-line.add .skill-diff-text {
+    color: #1a7f37;
+  }
+
+  .skill-diff-separator td {
+    color: rgba(0, 0, 0, 0.4);
+    background-color: rgba(0, 0, 0, 0.03);
+    border-top-color: #d8d8e4;
+    border-bottom-color: #d8d8e4;
+  }
+
+  .skill-diff-footer {
+    color: rgba(0, 0, 0, 0.5);
+  }
+
+  .skill-diff-stat-add {
+    color: #1a7f37;
+  }
+
+  .skill-diff-stat-del {
+    color: #c03030;
+  }
+
+  .skill-diff-toggle {
+    border-color: #d8d8e4;
+    color: rgba(0, 0, 0, 0.65);
+  }
+
+  .skill-diff-toggle:hover {
+    color: rgba(0, 0, 0, 0.9);
+    border-color: #b8b8d0;
+  }
+}

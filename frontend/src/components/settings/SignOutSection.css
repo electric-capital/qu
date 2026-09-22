@@ -1,0 +1,85 @@
+/* Sign Out options. Neutral colours come from the design tokens in index.css;
+   only the semantic status colours (disconnect amber, delete red) are literal,
+   so the light-mode block is limited to those. */
+.sign-out-options {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.sign-out-option {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.sign-out-option:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.sign-out-option-info {
+  flex: 1;
+  margin-right: 1.5rem;
+}
+
+.sign-out-option-info h4 {
+  margin: 0 0 0.25rem 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.sign-out-btn {
+  padding: 0.5rem 1.25rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.15s;
+  font-family: inherit;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.sign-out-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.sign-out-btn-logout {
+  background-color: var(--hover);
+  color: var(--text);
+}
+
+.sign-out-btn-logout:hover:not(:disabled) {
+  background-color: var(--pressed);
+}
+
+.sign-out-btn-disconnect {
+  background-color: rgba(255, 165, 0, 0.15);
+  color: #ffa500;
+}
+
+.sign-out-btn-disconnect:hover:not(:disabled) {
+  background-color: rgba(255, 165, 0, 0.25);
+}
+
+.sign-out-btn-delete {
+  background-color: rgba(220, 53, 69, 0.15);
+  color: #ff6b6b;
+}
+
+.sign-out-btn-delete:hover:not(:disabled) {
+  background-color: rgba(220, 53, 69, 0.25);
+}
+
+/* Light mode: only the literal semantic status colours need a darker,
+   higher-contrast variant on light grounds. Everything else follows the
+   tokens. */
+@media (prefers-color-scheme: light) {
+  .sign-out-btn-disconnect { background-color: rgba(255, 165, 0, 0.1); color: #e69500; }
+  .sign-out-btn-delete { background-color: rgba(220, 53, 69, 0.1); color: #d32f2f; }
+}

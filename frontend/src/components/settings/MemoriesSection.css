@@ -1,0 +1,77 @@
+/* Memories section. Colours come from the design tokens in index.css; only
+   the semantic archived-badge amber is literal, so the light-mode block is
+   limited to that. */
+.memories-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.memories-archived-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.memories-archived-toggle input[type="checkbox"] {
+  cursor: pointer;
+}
+
+.memories-empty {
+  color: var(--text-muted);
+  text-align: center;
+  padding: 2rem;
+  font-size: 0.875rem;
+}
+
+.memories-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.memory-card-content {
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin-bottom: 0.5rem;
+}
+
+.memory-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.memory-card-date {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.memory-badge-archived {
+  display: inline-block;
+  padding: 0.0625rem 0.5rem;
+  border-radius: 10px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  background: rgba(255, 193, 7, 0.15);
+  color: #ffc107;
+}
+
+.memory-card-archived {
+  opacity: 0.6;
+  border-style: dashed;
+}
+
+/* Light mode: only the literal semantic status colour needs a darker,
+   higher-contrast variant on light grounds. */
+@media (prefers-color-scheme: light) {
+  .memory-badge-archived { background: rgba(255, 193, 7, 0.1); color: #856404; }
+}

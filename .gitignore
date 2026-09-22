@@ -1,0 +1,53 @@
+# Credentials
+server_credentials.json
+credentials.json
+slack_credentials.json
+github_credentials.json
+twitter_credentials.json
+data/
+gemini_api_key.json
+dev_config.json
+server_config.json
+devplans/
+
+# Plugins: upstream ships only the README, .gitkeep, the _example test
+# fixture, and the in-tree reference plugins (github,
+# m365, slack, twitter, twilio, unifi, iru, telegram). A
+# fork commits its proprietary plugins by removing/overriding these
+# ignore lines in the fork.
+plugins/*
+!plugins/.gitkeep
+!plugins/README.md
+!plugins/_example/
+!plugins/github/
+!plugins/m365/
+!plugins/slack/
+!plugins/twitter/
+!plugins/twilio/
+!plugins/unifi/
+!plugins/iru/
+!plugins/telegram/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+.env
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Local server pid files
+*.pid
+
+# Dropped in the checkout root when a podman container gets OOM-killed
+oom

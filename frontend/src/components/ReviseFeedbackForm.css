@@ -1,0 +1,106 @@
+.revise-feedback-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.revise-feedback-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.5rem 0.65rem;
+  font-family: inherit;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background-color: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  resize: vertical;
+  min-height: 2.5rem;
+}
+
+.revise-feedback-textarea:focus {
+  outline: none;
+  border-color: rgba(217, 159, 52, 0.6);
+  background-color: rgba(255, 255, 255, 0.06);
+}
+
+.revise-feedback-textarea:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.revise-feedback-buttons {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.revise-feedback-btn {
+  padding: 0.4rem 0.8rem;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.revise-feedback-send {
+  background-color: #d99f34;
+  color: #1a1a1a;
+}
+
+.revise-feedback-send:hover:not(:disabled) {
+  background-color: #c08c2c;
+}
+
+.revise-feedback-cancel {
+  background-color: transparent;
+  color: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.revise-feedback-cancel:hover:not(:disabled) {
+  background-color: rgba(255, 255, 255, 0.06);
+}
+
+.revise-feedback-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Persisted feedback line shown under the "Denied" status on collapsed
+ * action-request cards and under denied requests in the Requests pane. */
+.action-request-feedback,
+.request-feedback {
+  margin-top: 0.25rem;
+  font-size: 0.8rem;
+  font-style: italic;
+  opacity: 0.8;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.action-request-feedback-label,
+.request-feedback-label {
+  font-style: normal;
+  font-weight: 600;
+  margin-right: 0.25rem;
+}
+
+@media (prefers-color-scheme: light) {
+  /* Surrounding card surfaces are #f0f0f8 / #fafafa, so the unfocused
+   * input must go LIGHTER than the card (white-on-card) rather than the
+   * usual darker-tint-on-white pattern used elsewhere. */
+  .revise-feedback-textarea {
+    background-color: #ffffff;
+    border-color: rgba(0, 0, 0, 0.2);
+  }
+
+  .revise-feedback-textarea:focus {
+    background-color: #ffffff;
+    border-color: #d99f34;
+  }
+}

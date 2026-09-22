@@ -1,0 +1,44 @@
+# Projects API Documentation
+
+This document describes the REST API endpoints for managing projects. Projects group related conversations with a shared workspace and optional project guide (custom instructions).
+
+## Overview
+
+The Projects API provides CRUD operations for projects and endpoints for managing project conversations. All project endpoints are defined in `chat/project_routes.py` and use the data access layer in `db/project_store.py`. The `Project` model is defined in `db/models.py`.
+
+Projects allow users to organize conversations around a shared context. All conversations in a project share a single workspace directory (`data/projects/{project_id}/workspace/`) instead of each having its own. An optional project guide provides custom instructions injected into the system prompt alongside the user's selected per-conversation guide.
+
+## Key Files
+
+| File | Description |
+|------|-------------|
+| `chat/project_routes.py` | Project CRUD and project-conversation REST endpoints |
+| `chat/project_skill_routes.py` | Project skill CRUD and project auto-load REST endpoints (`/app/api/projects/{project_id}/skills`) |
+| `db/project_store.py` | Project data access layer (CRUD operations); `delete_project()` and `delete_all_user_projects()` explicitly delete project skills (non-cascading FK) |
+| `db/skill_store.py` | Project skill data access layer (CRUD, auto-load management) |
+| `db/models.py` | `Project`, `Skill` (with `project_id`), `ProjectSkillAutoload` ORM models, `Conversation.project_id` FK |
+| `db/conversation_store.py` | `create_conversation()` accepts `project_id` and optional `routine_id`, `list_project_conversations_meta()` with `include_archived` filtering, `get_project_for_conversation()`, `set_conversation_project()` (attach a standalone conversation to a project), `archive_conversation()`, `unarchive_conversation()` |
+| `chat/storage.py` | `ChatStorage.create_project_conversation()`, `ChatStorage.create_project_workspace()`, `ChatStorage.move_conversation_workspace_to_project()`, `ChatStorage.delete_project_workspace()`, `ChatStorage.list_project_conversations()`, `ChatStorage.get_workspace_path()` (project-aware) |
+| `quest.py` | Registers `project_router` |
+
+## Authentication
+
+All project endpoints support dual authentication: session cookie OR API key Bearer token (same as other `/app/api/*` endpoints). See [Chat API Authentication](chat-api.md) for details.
+
+## Project Endpoints
+
+All project endpoints are defined in `chat/project_routes.py`. Request/response models (Pydantic) are in the same file. Data access is in `db/project_store.py`.
+
+- **GET `/app/api/projects`** -- List projects, ordered by most recently updated (`list_user_projects()`). Includes a subquery count of conversations per project.
+- **POST `/app/api/projects`** -- Create a project (`create_user_project()`). Creates a workspace directory at `data/projects/{project_id}/workspace/` via `ChatStorage.create_project_workspace()`. Body accepts optional `public: bool` (default false) selecting the immutable public-project mode (internet sandbox, no internal data access; see [Public Projects Architecture](../architecture/public-projects.md)); the flag is returned on every project response and cannot be changed via PUT. Public mode requires the server-global `public_projects` [feature gate](../architecture/feature-gates.md) (400 `public_projects_disabled` while closed); a closed gate also hides existing public projects -- filtered from the list endpoint and 404 on every by-id project endpoint (get/update/delete/conversations) via `_get_visible_project()`, with the rows preserved for when the gate reopens. Public projects reject routine creation (400 `public_project_no_routines` in `chat/routine_routes.py`) and project-skill writes (400 `public_project_no_skills` in `chat/project_skill_routes.py`; skill list/read endpoints return empty).
+- **POST `/app/api/projects/from-conversation`** -- Create a project seeded from an existing standalone conversation (`create_project_from_conversation()`). Body: `{name, conversation_id}`. Validates the conversation exists, is owned by the caller, is not already in a project (400 `already_in_project`), and is not Slack-originated (400 `slack_conversation`). Creates the project row and workspace, moves the conversation's workspace files into the project workspace via `ChatStorage.move_conversation_workspace_to_project()`, sets `conversations.project_id` via `set_conversation_project()`, invalidates cached SDK sessions (project membership changes the system prompt), and publishes a `conversation_list_changed` event (action `moved_to_project`). Returns the project with `conversation_count: 1`. Name validation and duplicate handling (409 `duplicate_name`) match POST `/app/api/projects` (shared `_create_project_checked()` helper). The request body deliberately has no `public` field: converting moves an existing workspace's files into the project, so public projects can only be created empty via plain POST `/app/api/projects`.
+- **GET `/app/api/projects/{project_id}`** -- Get a project (`get_user_project()`). Scoped to the authenticated user.
+- **PUT `/app/api/projects/{project_id}`** -- Update project name and/or guide (`update_user_project()`). When `guide` is updated, calls `invalidate_user_sessions()` from `chat/gemini_api/session.py` to discard cached SDK sessions.
+- **DELETE `/app/api/projects/{project_id}`** -- Delete project and all conversations (`delete_user_project()`). Explicitly deletes project skills first (non-cascading FK on `skills.project_id`), then relies on `ON DELETE CASCADE` for conversation rows. Deletes workspace directory and all conversation chat directories.
+
+## Project Conversation Endpoints
+
+- **POST `/app/api/projects/{project_id}/conversations`** -- Create a conversation within a project (`create_project_conversation()`). Optionally accepts `routine_id`. Creates chat directory and links to project workspace. Delegates to `ChatStorage.create_project_conversation()` in `chat/storage.py`, then publishes a per-user `conversation_list_changed` event (action `created`) like the standalone create endpoint, so a sidebar drilled into the project picks the new row up immediately instead of waiting for the first reply to finish or the 30s project poll.
+- **GET `/app/api/projects/{project_id}/conversations`** -- List project conversations (`list_project_conversations_endpoint()`). Supports `include_archived` query param. Delegates to `list_project_conversations_meta()` in `db/conversation_store.py`.
+
+---
