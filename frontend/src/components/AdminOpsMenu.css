@@ -1,0 +1,329 @@
+/* Admin ops menu - fixed position container in bottom-right */
+.admin-ops-container {
+  position: fixed;
+  bottom: 1rem;
+  right: 1rem;
+  z-index: 100;
+}
+
+/* Circular trigger button */
+.admin-ops-button {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background-color: #2a2a2a;
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.admin-ops-button:hover {
+  background-color: #3a3a3a;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.admin-ops-button:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.admin-ops-button.shutting-down {
+  background-color: #4a2020;
+  border-color: rgba(255, 100, 100, 0.3);
+  color: #ff6b6b;
+}
+
+/* Amber/orange button when impersonating */
+.admin-ops-button.impersonating {
+  background-color: #92400e;
+  border-color: rgba(251, 191, 36, 0.4);
+  color: #fbbf24;
+}
+
+.admin-ops-button.impersonating:hover {
+  background-color: #78350f;
+  color: #fde68a;
+}
+
+/* Spinner for shutting-down state */
+.admin-ops-spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 100, 100, 0.3);
+  border-top-color: #ff6b6b;
+  border-radius: 50%;
+  animation: admin-ops-spin 0.8s linear infinite;
+}
+
+@keyframes admin-ops-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Inline variant - rendered in the sidebar UserInfoBar next to the gear.
+   The dropdown still opens upward, overlaying the sidebar content. */
+.admin-ops-container.admin-ops-inline {
+  position: relative;
+  bottom: auto;
+  right: auto;
+  z-index: 20;
+}
+
+.admin-ops-inline .admin-ops-button {
+  width: auto;
+  height: auto;
+  padding: 0.375rem;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.admin-ops-inline .admin-ops-button:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.87);
+}
+
+.admin-ops-inline .admin-ops-button.shutting-down {
+  background-color: rgba(255, 100, 100, 0.12);
+  color: #ff6b6b;
+}
+
+.admin-ops-inline .admin-ops-button.impersonating {
+  background-color: rgba(251, 191, 36, 0.15);
+  color: #fbbf24;
+}
+
+.admin-ops-inline .admin-ops-button.impersonating:hover {
+  background-color: rgba(251, 191, 36, 0.25);
+  color: #fde68a;
+}
+
+/* Dropdown menu - opens upward from the button */
+.admin-ops-dropdown {
+  position: absolute;
+  bottom: calc(100% + 0.5rem);
+  right: 0;
+  min-width: 160px;
+  background-color: #2a2a2a;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+}
+
+/* Menu items */
+.admin-ops-item {
+  display: block;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: none;
+  background: none;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 0.85rem;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.admin-ops-item:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Danger item (shutdown) */
+.admin-ops-item-danger:hover {
+  color: #ff6b6b;
+}
+
+.admin-ops-item-danger.confirming {
+  color: #ff6b6b;
+  background-color: rgba(255, 50, 50, 0.1);
+  font-weight: 500;
+}
+
+/* Impersonation info row in dropdown */
+.admin-ops-impersonating-info {
+  padding: 0.4rem 0.75rem;
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.5);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.admin-ops-impersonating-info strong {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+/* Stop impersonation item */
+.admin-ops-item-stop {
+  color: #fbbf24;
+  font-weight: 500;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.admin-ops-item-stop:hover {
+  color: #fde68a;
+  background-color: rgba(251, 191, 36, 0.1);
+}
+
+.admin-ops-item-stop:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+/* Back button in user picker */
+.admin-ops-item-back {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* User picker scrollable list */
+.admin-ops-user-list {
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+/* Individual user row */
+.admin-ops-user-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 0.4rem 0.75rem;
+}
+
+.admin-ops-user-name {
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.admin-ops-user-email {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.admin-ops-no-users {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+/* Light mode overrides */
+@media (prefers-color-scheme: light) {
+  .admin-ops-button {
+    background-color: #f0f0f0;
+    border-color: rgba(0, 0, 0, 0.15);
+    color: rgba(0, 0, 0, 0.6);
+  }
+
+  .admin-ops-button:hover {
+    background-color: #e0e0e0;
+    color: rgba(0, 0, 0, 0.8);
+  }
+
+  .admin-ops-button.shutting-down {
+    background-color: #fde8e8;
+    border-color: rgba(200, 50, 50, 0.3);
+    color: #c53030;
+  }
+
+  .admin-ops-button.impersonating {
+    background-color: #fef3c7;
+    border-color: rgba(180, 130, 0, 0.4);
+    color: #92400e;
+  }
+
+  .admin-ops-button.impersonating:hover {
+    background-color: #fde68a;
+    color: #78350f;
+  }
+
+  .admin-ops-inline .admin-ops-button {
+    background: none;
+    color: rgba(0, 0, 0, 0.5);
+  }
+
+  .admin-ops-inline .admin-ops-button:hover {
+    background-color: rgba(0, 0, 0, 0.05);
+    color: rgba(0, 0, 0, 0.87);
+  }
+
+  .admin-ops-inline .admin-ops-button.shutting-down {
+    background-color: rgba(200, 50, 50, 0.1);
+    color: #c53030;
+  }
+
+  .admin-ops-inline .admin-ops-button.impersonating {
+    background-color: rgba(180, 130, 0, 0.15);
+    color: #92400e;
+  }
+
+  .admin-ops-inline .admin-ops-button.impersonating:hover {
+    background-color: rgba(180, 130, 0, 0.25);
+    color: #78350f;
+  }
+
+  .admin-ops-spinner {
+    border-color: rgba(200, 50, 50, 0.3);
+    border-top-color: #c53030;
+  }
+
+  .admin-ops-dropdown {
+    background-color: #ffffff;
+    border-color: rgba(0, 0, 0, 0.15);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  }
+
+  .admin-ops-item {
+    color: rgba(0, 0, 0, 0.8);
+  }
+
+  .admin-ops-item:hover {
+    background-color: rgba(0, 0, 0, 0.05);
+  }
+
+  .admin-ops-item-danger:hover {
+    color: #c53030;
+  }
+
+  .admin-ops-item-danger.confirming {
+    color: #c53030;
+    background-color: rgba(200, 50, 50, 0.08);
+  }
+
+  .admin-ops-item-back {
+    border-bottom-color: rgba(0, 0, 0, 0.1);
+    color: rgba(0, 0, 0, 0.5);
+  }
+
+  .admin-ops-user-email {
+    color: rgba(0, 0, 0, 0.4);
+  }
+
+  .admin-ops-no-users {
+    color: rgba(0, 0, 0, 0.4);
+  }
+
+  .admin-ops-impersonating-info {
+    color: rgba(0, 0, 0, 0.5);
+    border-bottom-color: rgba(0, 0, 0, 0.1);
+  }
+
+  .admin-ops-impersonating-info strong {
+    color: rgba(0, 0, 0, 0.8);
+  }
+
+  .admin-ops-item-stop {
+    color: #92400e;
+    border-bottom-color: rgba(0, 0, 0, 0.1);
+  }
+
+  .admin-ops-item-stop:hover {
+    color: #78350f;
+    background-color: rgba(180, 130, 0, 0.08);
+  }
+}

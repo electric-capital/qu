@@ -1,0 +1,1162 @@
+/* Chat panel container */
+.chat-panel {
+  flex: 1;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--surface);
+  position: relative;
+}
+
+/* Messages container. The transparent right border insets the scrollbar
+   from the panel edge (scrollbars render inside the border box). */
+.messages-container {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 1rem 2rem;
+  border-right: 6px solid transparent;
+}
+
+/* Custom scrollbar for messages */
+.messages-container::-webkit-scrollbar {
+  width: 8px;
+}
+
+.messages-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.messages-container::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+}
+
+.messages-container::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* Messages list. The 720px cap keeps reply lines at a readable measure;
+   the composer bubble and its banners share the same cap so they line up. */
+.messages-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-width: 720px;
+  margin: 0 auto;
+  width: 100%;
+  /* Trailing slack so scroll-to-bottom leaves ~3 lines of empty space below
+   * the last message; otherwise the final message hugs the viewport edge. */
+  padding-bottom: 3rem;
+}
+
+/* Search result highlight animation */
+.message-search-highlight {
+  animation: searchHighlightFlash 2s ease-out;
+  border-radius: 8px;
+}
+
+@keyframes searchHighlightFlash {
+  0% { background-color: rgb(var(--accent-rgb) / 0.25); }
+  100% { background-color: transparent; }
+}
+
+/* Loading state */
+.chat-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.875rem;
+}
+
+/* Error state */
+.chat-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #ff6b6b;
+  font-size: 0.875rem;
+  text-align: center;
+  padding: 2rem;
+}
+
+/* Empty conversation state */
+.empty-conversation {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 0.875rem;
+  text-align: center;
+}
+
+/* Streaming message styles */
+.message.streaming {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  align-items: flex-start;
+  animation: fadeIn 0.3s ease-in;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Slim row holding the typing indicator while a reply is in flight */
+.message.streaming .message-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.5);
+  padding: 0 0.25rem;
+}
+
+.message.streaming .message-content {
+  background: none;
+  padding: 0.25rem 0.25rem;
+  border-radius: 0;
+  max-width: 100%;
+  word-wrap: break-word;
+  white-space: normal;
+  line-height: 1.5;
+}
+
+/* Streaming message animation */
+.message.streaming .message-content {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.9;
+  }
+}
+
+/* Typing indicator */
+.typing-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.typing-indicator .dot {
+  width: 4px;
+  height: 4px;
+  background-color: rgba(255, 255, 255, 0.5);
+  border-radius: 50%;
+  animation: typing 1.4s infinite;
+}
+
+.typing-indicator .dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing-indicator .dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes typing {
+  0%, 60%, 100% {
+    opacity: 0.3;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-4px);
+  }
+}
+
+/* Pre-stream typing placeholder */
+.typing-placeholder {
+  color: rgba(255, 255, 255, 0.5);
+  font-style: italic;
+}
+
+/* Streaming cursor */
+.streaming-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  background-color: rgba(255, 255, 255, 0.8);
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  animation: blink 1s step-end infinite;
+}
+
+@keyframes blink {
+  0%, 50% {
+    opacity: 1;
+  }
+  51%, 100% {
+    opacity: 0;
+  }
+}
+
+/* Input area */
+.input-area {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1rem;
+  background-color: var(--surface);
+  border-top: 1px solid var(--border);
+  position: relative;
+}
+
+.input-area.drag-over {
+  background-color: rgb(var(--accent-rgb) / 0.1);
+}
+
+/* Drop-target overlay shown while a file drag hovers the composer
+ * (FileBrowser .drag-overlay pattern). */
+.composer-drag-overlay {
+  position: absolute;
+  inset: 0;
+  background-color: rgb(var(--accent-rgb) / 0.2);
+  border: 2px dashed var(--accent);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+.composer-drag-overlay p {
+  margin: 0;
+  color: white;
+  font-weight: 500;
+  font-size: 0.875rem;
+  background-color: rgb(var(--accent-rgb) / 0.8);
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  pointer-events: none;
+}
+
+/* Slack thread deep link shown when the composer is locked for a
+ * Slack-driven conversation. */
+.slack-thread-link-note {
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.6);
+  padding: 0 0.25rem;
+}
+
+.slack-thread-link-note a {
+  color: var(--accent-text);
+  text-decoration: none;
+}
+
+.slack-thread-link-note a:hover {
+  text-decoration: underline;
+}
+
+/* Persistent public-project warning above the composer input: the
+ * conversation runs in an internet-enabled sandbox, so remind the user not
+ * to type private/sensitive content. Amber palette matches the
+ * expensive-resume warning card; dark-first with light-mode overrides in
+ * the shared light block below. */
+.public-project-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: #2a2416;
+  border: 1px solid #6b5a1e;
+  border-radius: 8px;
+  color: #e0d5b0;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.public-project-warning strong {
+  color: #e6b422;
+}
+
+.public-project-warning-icon {
+  color: #e6b422;
+  flex-shrink: 0;
+  margin-top: 0.15rem;
+}
+
+/* Composer paste: rejection / status notice */
+.paste-notice {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.6);
+  padding: 0 0.25rem;
+}
+
+/* Composer paste: queued attachment thumbnails (above the input row) */
+.paste-attachments-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0 0.25rem;
+}
+
+.paste-attachment-thumb {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  border-radius: 6px;
+  overflow: hidden;
+  background-color: #2a2a2a;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.paste-attachment-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.paste-attachment-remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: none;
+  background-color: rgba(0, 0, 0, 0.7);
+  color: #fff;
+  font-size: 0.75rem;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.paste-attachment-remove:hover {
+  background-color: rgba(0, 0, 0, 0.9);
+}
+
+.paste-attachment-remove:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* Generic file attachments: chips (above the input row) for files queued for
+   upload-before-send. Distinct from the image thumbnails above. */
+.file-attachments-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0 0.25rem;
+}
+
+.file-attachment-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  max-width: 280px;
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+  background-color: #2a2a2a;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.87);
+}
+
+.file-attachment-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-attachment-size {
+  color: rgba(255, 255, 255, 0.5);
+  flex-shrink: 0;
+}
+
+.file-attachment-remove {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: none;
+  background-color: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 0.7rem;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.file-attachment-remove:hover {
+  background-color: rgba(255, 255, 255, 0.25);
+}
+
+.file-attachment-remove:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* Flags popover anchor (mirrors AdminOpsMenu) */
+.flags-container {
+  position: relative;
+  display: inline-flex;
+}
+
+/* Popover opens upward from the button, like the AdminOpsMenu dropdown */
+.flags-popover {
+  position: absolute;
+  bottom: calc(100% + 0.5rem);
+  left: 0;
+  min-width: 280px;
+  max-width: 360px;
+  background-color: #2a2a2a;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  padding: 0.25rem;
+  z-index: 100;
+}
+
+.flags-popover-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.flags-popover-row:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.flags-popover-row input[type="checkbox"] {
+  margin-top: 0.15rem;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.flags-popover-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.flags-popover-name {
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.87);
+}
+
+.flags-popover-desc {
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.5);
+  line-height: 1.35;
+}
+
+/* Two-level model menu (trigger button + upward popover + flyout submenu).
+   The trigger is a borderless pill sitting in the composer controls row; the
+   popover mirrors the flags-popover look. */
+.model-menu-container {
+  position: relative;
+  display: inline-flex;
+}
+
+.model-menu-trigger {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  height: 30px;
+  box-sizing: border-box;
+  padding: 0 0.6rem;
+  border: 1px solid transparent;
+  border-radius: 15px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.65);
+  font-family: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: color 0.15s, background-color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+
+/* border-color stays transparent on hover: the global index.css button:hover
+   rule would otherwise paint the borderless pill accent-blue. */
+.model-menu-trigger:hover:not(:disabled) {
+  color: rgba(255, 255, 255, 0.87);
+  background-color: rgba(255, 255, 255, 0.08);
+  border-color: transparent;
+}
+
+.model-menu-trigger:focus {
+  outline: none;
+}
+
+.model-menu-trigger:focus-visible {
+  border-color: var(--accent);
+}
+
+/* Long model names ellipsize so the row never overflows the bubble. */
+.model-menu-trigger-label {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.model-menu-trigger:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.model-menu-trigger svg {
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+
+.model-menu {
+  position: absolute;
+  bottom: calc(100% + 0.5rem);
+  left: 0;
+  min-width: 220px;
+  background-color: #2a2a2a;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  padding: 0.25rem;
+  z-index: 100;
+}
+
+.model-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.5rem;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.model-menu-item:hover,
+.model-menu-item-open {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.model-menu-item-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.model-menu-item-label {
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.87);
+  white-space: nowrap;
+}
+
+.model-menu-item-cost {
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.model-menu-item-sub {
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.5);
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+.model-menu-item svg {
+  flex-shrink: 0;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.model-menu-item .model-menu-check {
+  color: var(--accent);
+}
+
+.model-menu-divider {
+  height: 1px;
+  margin: 0.25rem 0.5rem;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* Anchor wrapper so the flyout positions against the "All models" row. */
+.model-submenu-anchor {
+  position: relative;
+}
+
+.model-submenu {
+  position: absolute;
+  left: calc(100% + 0.35rem);
+  bottom: -0.25rem;
+  min-width: 200px;
+  max-height: 320px;
+  overflow-y: auto;
+  background-color: #2a2a2a;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  padding: 0.25rem;
+  z-index: 101;
+}
+
+/* Read-only "N flags enabled" label shown after the first message */
+.flags-label {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.5);
+  padding: 0.25rem 0.5rem;
+  white-space: nowrap;
+  cursor: default;
+}
+
+/* Message input textarea. Borderless: the surrounding .composer-bubble
+   provides the chrome. Auto-resized inline (Composer.tsx handleInputChange),
+   so no flex-basis here -- inside the COLUMN bubble a flex: 1 would pin the
+   height to min-height. */
+.message-input {
+  flex: none;
+  min-height: 24px;
+  max-height: 200px;
+  padding: 0.4rem 0.125rem;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.87);
+  font-family: inherit;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  resize: none;
+  overflow-y: auto;
+}
+
+.message-input:focus {
+  outline: none;
+}
+
+.message-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.message-input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+/* Scrollbar for textarea */
+.message-input::-webkit-scrollbar {
+  width: 6px;
+}
+
+.message-input::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.message-input::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+}
+
+.message-input::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* Light mode support */
+@media (prefers-color-scheme: light) {
+  .messages-container::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.2);
+  }
+
+  .messages-container::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.3);
+  }
+
+  .chat-loading,
+  .empty-conversation {
+    color: rgba(0, 0, 0, 0.6);
+  }
+
+  .chat-error {
+    color: #d32f2f;
+  }
+
+  .message.streaming .message-header {
+    color: rgba(0, 0, 0, 0.5);
+  }
+
+  .message.streaming .message-content {
+    background: none;
+    color: rgba(0, 0, 0, 0.87);
+  }
+
+  .input-area.drag-over {
+    background-color: rgb(var(--accent-rgb) / 0.05);
+  }
+
+  .slack-thread-link-note {
+    color: rgba(0, 0, 0, 0.6);
+  }
+
+  .public-project-warning {
+    background: #fdf6e3;
+    border-color: #e0c76a;
+    color: #6b5a1e;
+  }
+
+  .public-project-warning strong,
+  .public-project-warning-icon {
+    color: #9a7209;
+  }
+
+  .slack-thread-link-note a {
+    color: var(--accent-text);
+  }
+
+  .message-input {
+    color: rgba(0, 0, 0, 0.87);
+  }
+
+  .message-input::placeholder {
+    color: rgba(0, 0, 0, 0.4);
+  }
+
+  .message-input::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.2);
+  }
+
+  .message-input::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.3);
+  }
+
+  .typing-indicator .dot {
+    background-color: rgba(0, 0, 0, 0.5);
+  }
+
+  .typing-placeholder {
+    color: rgba(0, 0, 0, 0.5);
+  }
+
+  .streaming-cursor {
+    background-color: rgba(0, 0, 0, 0.8);
+  }
+
+  .model-menu-trigger {
+    color: rgba(0, 0, 0, 0.55);
+  }
+
+  .model-menu-trigger:hover:not(:disabled) {
+    color: rgba(0, 0, 0, 0.87);
+    background-color: rgba(0, 0, 0, 0.06);
+  }
+
+  .model-menu,
+  .model-submenu {
+    background-color: #ffffff;
+    border-color: rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  }
+
+  .model-menu-item:hover,
+  .model-menu-item-open {
+    background-color: rgba(0, 0, 0, 0.05);
+  }
+
+  .model-menu-item-label {
+    color: rgba(0, 0, 0, 0.87);
+  }
+
+  .model-menu-item-cost {
+    color: rgba(0, 0, 0, 0.45);
+  }
+
+  .model-menu-item-sub {
+    color: rgba(0, 0, 0, 0.5);
+  }
+
+  .model-menu-item svg {
+    color: rgba(0, 0, 0, 0.5);
+  }
+
+  .model-menu-item .model-menu-check {
+    color: var(--accent);
+  }
+
+  .model-menu-divider {
+    background: rgba(0, 0, 0, 0.1);
+  }
+
+  .flags-label {
+    color: rgba(0, 0, 0, 0.5);
+  }
+
+  .flags-popover {
+    background-color: #ffffff;
+    border-color: rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  }
+
+  .flags-popover-row:hover {
+    background-color: rgba(0, 0, 0, 0.05);
+  }
+
+  .flags-popover-name {
+    color: rgba(0, 0, 0, 0.87);
+  }
+
+  .flags-popover-desc {
+    color: rgba(0, 0, 0, 0.5);
+  }
+}
+
+/* ================================================================
+   Composer bubble (rendered by Composer.tsx on every viewport).
+
+   A floating rounded bubble on the chat ground -- the auto-growing textarea
+   on top, an icon-only controls row underneath (attach / skills / flags /
+   model / context / send). No labels; the buttons carry tooltips. Matches
+   the floating right-side workspace cards from the nav redesign.
+
+   Desktop: the bubble sits in the flex column below the messages, always
+   expanded, centered and capped at the messages-list width.
+   Phone (same 768px breakpoint as useIsMobile / MobileShell): the bubble
+   overlays the bottom of the messages area, collapses to a single input
+   pill until focused or holding a draft, and its popovers become
+   bubble-wide sheets. Those phone rules live in the media query at the end.
+   ================================================================ */
+
+/* The container floats over the chat ground: no full-width chrome. */
+.input-area.composer {
+  background: transparent;
+  border-top: none;
+  padding: 0.25rem 2rem 1rem;
+  gap: 0.375rem;
+}
+
+.composer-bubble {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  box-sizing: border-box;
+  position: relative;
+  background-color: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: 22px;
+  padding: 0.5rem 0.6rem 0.4rem 0.85rem;
+  box-shadow: var(--shadow-card);
+  transition: border-color 0.15s;
+}
+
+.composer:focus-within .composer-bubble {
+  border-color: rgb(var(--accent-rgb) / 0.55);
+}
+
+/* Attachment rows (pasted images / queued files) sit inside the bubble. */
+.composer-bubble .paste-attachments-row,
+.composer-bubble .file-attachments-row {
+  margin: 0.15rem 0 0;
+}
+
+/* Banners rendered in the strip around the bubble: cap and center them
+   with the bubble so they line up on wide chat panels. */
+.composer > .public-project-warning,
+.composer > .slack-thread-link-note,
+.composer > .paste-notice {
+  width: 100%;
+  max-width: 720px;
+  margin-left: auto;
+  margin-right: auto;
+  box-sizing: border-box;
+}
+
+/* Icon-only controls row (second line of the bubble). */
+.composer-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.composer-spacer {
+  flex: 1;
+}
+
+.composer-icon-btn {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.65);
+  cursor: pointer;
+  transition: color 0.15s, background-color 0.15s;
+}
+
+.composer-icon-btn:hover:not(:disabled) {
+  color: rgba(255, 255, 255, 0.87);
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.composer-icon-btn:active:not(:disabled) {
+  background-color: rgba(255, 255, 255, 0.12);
+}
+
+.composer-icon-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Count badge pinned to an icon button's top-right corner. */
+.composer-badge {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  border-radius: 8px;
+  background-color: var(--accent);
+  color: var(--accent-contrast);
+  font-size: 0.625rem;
+  font-weight: 600;
+  line-height: 1;
+  pointer-events: none;
+}
+
+/* Inline "no credentials" warning next to the model trigger. */
+.composer-no-models {
+  font-size: 0.75rem;
+  color: #f0ad4e;
+  white-space: nowrap;
+  cursor: help;
+}
+
+/* Round send / stop button (ChatGPT-style arrow). */
+.composer-send {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background-color: var(--accent);
+  color: var(--accent-contrast);
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.composer-send:hover:not(:disabled) {
+  background-color: var(--accent-hover);
+}
+
+.composer-send:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.composer-send.composer-stop {
+  background-color: #ff6b6b;
+}
+
+.composer-send.composer-stop:hover:not(:disabled) {
+  background-color: #ff5252;
+}
+
+/* The ContextIndicator's own margin-left: auto is redundant next to the
+   spacer and would fight the gap; neutralize it inside the row. */
+.composer-controls .context-indicator-container {
+  margin-left: 0;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+@media (prefers-color-scheme: light) {
+  .composer-icon-btn {
+    color: rgba(0, 0, 0, 0.55);
+  }
+
+  .composer-icon-btn:hover:not(:disabled) {
+    color: rgba(0, 0, 0, 0.87);
+    background-color: rgba(0, 0, 0, 0.06);
+  }
+
+  .composer-icon-btn:active:not(:disabled) {
+    background-color: rgba(0, 0, 0, 0.09);
+  }
+
+  .composer-no-models {
+    color: #b7791f;
+  }
+}
+
+/* ---------------------------------------------------------------
+   Phone widths (matches useIsMobile). The bubble overlays the messages
+   area and collapses to an input pill until expanded.
+   --------------------------------------------------------------- */
+@media (max-width: 768px) {
+  .input-area.composer {
+    padding: 0.375rem 0.625rem calc(0.5rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* Phones have no slack for the desktop 2rem gutters */
+  .messages-container {
+    padding: 1rem;
+    border-right: none;
+  }
+
+  /* Inside the chat panel the composer overlays the bottom of the messages
+     area (.chat-panel is the positioned ancestor) instead of sitting below
+     it in the flex column, so conversation text scrolls behind the
+     transparent strip around the bubble. Scoped to .chat-panel so the home
+     screen's composer keeps its in-flow layout. */
+  .chat-panel > .input-area.composer {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 10;
+  }
+
+  /* Room below the last message for the overlaid composer (expanded bubble
+     ~100px) plus the usual trailing slack; replaces the desktop 3rem.
+     scroll-padding-bottom makes ChatPanel's scrollIntoView-based
+     scroll-to-bottom stop with the last message clear of the bubble (the
+     scroll anchor sits above the list padding, so without it auto-scroll
+     parks the newest text behind the composer). */
+  .chat-panel .messages-container {
+    scroll-padding-bottom: calc(6.5rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  .chat-panel .messages-list {
+    padding-bottom: calc(7.5rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* Collapsed pill: tighter radius/padding; the expanded bubble restores
+     the shared desktop shape. Solid colours (not the tokens) because
+     conversation text scrolls behind and the bubble must stay opaque. */
+  .composer-bubble {
+    background-color: #2a2a2a;
+    border-color: rgba(255, 255, 255, 0.14);
+    border-radius: 26px;
+    padding: 0.3rem 0.85rem;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  }
+
+  .composer.composer-expanded .composer-bubble {
+    border-radius: 22px;
+    padding: 0.5rem 0.6rem 0.4rem 0.85rem;
+  }
+
+  /* 16px keeps iOS Safari from auto-zooming on focus; the lower cap keeps a
+     long draft from crowding out the conversation above the keyboard. */
+  .composer .message-input {
+    font-size: 16px;
+    max-height: 160px;
+  }
+
+  /* The read-only Slack note and paste notice render in the transparent
+     strip around the bubble; conversation text scrolls behind them, so give
+     them their own small bubble to stay legible. */
+  .composer > .slack-thread-link-note,
+  .composer > .paste-notice {
+    width: auto;
+    align-self: center;
+    padding: 0.25rem 0.75rem;
+    border-radius: 12px;
+    background-color: rgba(42, 42, 42, 0.92);
+  }
+
+  /* No room for the flags count label in the phone row. */
+  .composer .flags-label {
+    display: none;
+  }
+
+  .composer .model-menu-trigger-label {
+    max-width: 30vw;
+  }
+
+  /* Popovers (model menu + flyout, flags) are trigger-anchored on desktop;
+     on a phone they overflow the viewport. Re-anchor them to the bubble
+     instead (the containers go static so the bubble is the positioned
+     ancestor) and render each as a full-bubble-width sheet floating above
+     the composer. */
+  .composer .flags-container,
+  .composer .model-menu-container,
+  .composer .model-submenu-anchor {
+    position: static;
+  }
+
+  .composer .flags-popover,
+  .composer .model-menu {
+    left: 0;
+    right: 0;
+    bottom: calc(100% + 0.5rem);
+    min-width: 0;
+    max-width: none;
+  }
+
+  .composer .flags-popover {
+    max-height: 45vh;
+    overflow-y: auto;
+  }
+
+  /* The "All models" flyout cannot escape the menu (its containing block),
+     so overlay it on the menu, growing upward from the menu's bottom edge.
+     NO overflow rule on .model-menu itself -- that would clip this child. */
+  .composer .model-submenu {
+    left: 0;
+    right: 0;
+    bottom: 0;
+    min-width: 0;
+    max-width: none;
+    max-height: 45vh;
+  }
+}
+
+@media (max-width: 768px) and (prefers-color-scheme: light) {
+  .composer-bubble {
+    background-color: #ffffff;
+    border-color: rgba(0, 0, 0, 0.15);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  }
+
+  .composer > .slack-thread-link-note,
+  .composer > .paste-notice {
+    background-color: rgba(255, 255, 255, 0.92);
+  }
+}

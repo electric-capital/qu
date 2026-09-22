@@ -1,0 +1,46 @@
+/* Token-usage breakdown cell shared by the System Reports tables. */
+
+.tokens-cell-empty {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.tokens-total {
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.tokens-by-model {
+  margin-top: 0.15rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+}
+
+.tokens-model-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 0.6875rem;
+}
+
+.tokens-model-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+/* Labeled native numbers can outgrow one line; wrap instead of clipping. */
+.tokens-model-counts {
+  white-space: normal;
+  text-align: right;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* Estimated-cost suffix ("· ~$0.42") in the total line and per-model rows;
+   slightly green so dollars stand out from the token counts around them. */
+.tokens-cost {
+  color: rgba(134, 239, 172, 0.85);
+  white-space: nowrap;
+}

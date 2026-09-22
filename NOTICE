@@ -1,0 +1,31 @@
+Quest
+Copyright 2024-2026 Electric Capital
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+The frontend build (frontend/dist, produced by `npm run build`) copies the
+following third-party runtime assets from the pdf.js distribution
+(pdfjs-dist, Apache-2.0, https://github.com/mozilla/pdf.js) into
+dist/assets/pdfjs/. Each directory ships its own license text, reproduced
+here by reference:
+
+- cmaps/          Adobe CMap resources. Copyright 1990-2009 Adobe Systems
+                  Incorporated. BSD-style license (cmaps/LICENSE).
+- standard_fonts/ Foxit standard fonts. Copyright 2014 PDFium Authors.
+                  BSD-3-Clause (standard_fonts/LICENSE_FOXIT).
+                  Liberation fonts. Copyright 2012 Red Hat, Inc. and
+                  Google Corporation. SIL Open Font License 1.1
+                  (standard_fonts/LICENSE_LIBERATION).
+- wasm/           OpenJPEG. BSD-2-Clause (wasm/LICENSE_OPENJPEG,
+                  wasm/LICENSE_PDFJS_OPENJPEG).
+                  qcms. Copyright 2009-2024 Mozilla Corporation,
+                  1998-2007 Marti Maria. MIT (wasm/LICENSE_QCMS,
+                  wasm/LICENSE_PDFJS_QCMS).
+- iccs/           ICC profiles. CC0 1.0 Universal (iccs/LICENSE).
+
+script-runner-seccomp-fallback.json is a snapshot of the default seccomp
+profile from containers/common (https://github.com/containers/common),
+Apache-2.0.
+
+The JetBrains Mono typeface is loaded at runtime from Google Fonts and is
+not distributed with this product (SIL Open Font License 1.1).

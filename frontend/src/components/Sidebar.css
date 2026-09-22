@@ -1,0 +1,822 @@
+/* Sidebar container. Sits on the theme's raised ground (--surface-raised,
+   shared with the composer bubble and the right-panel cards) so a colour
+   theme can tint the nav/chrome separately from the chat ground. */
+.sidebar {
+  width: 260px;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--surface-raised);
+  border-right: 1px solid var(--border);
+}
+
+/* Brand bar: logo + app name on the left, search + requests inbox on the right */
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.375rem;
+  padding: 0.875rem 0.5rem 0.875rem 1rem;
+  flex-shrink: 0;
+}
+
+.sidebar-brand-identity {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  min-width: 0;
+}
+
+.sidebar-brand-logo {
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+}
+
+.sidebar-brand-name {
+  font-size: 1.0625rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-brand-actions {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex-shrink: 0;
+}
+
+/* Square icon buttons in the brand bar (new chat, search, requests inbox) */
+.sidebar-icon-button {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color 0.15s, background-color 0.15s;
+}
+
+.sidebar-icon-button:hover {
+  color: var(--text);
+  background-color: var(--hover);
+}
+
+/* Keyboard focus keeps a ring; mouse clicks don't leave one behind. */
+.sidebar-icon-button:focus:not(:focus-visible) {
+  outline: none;
+}
+
+.sidebar-icon-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.sidebar-icon-button.active {
+  color: var(--accent);
+  background-color: var(--accent-soft);
+}
+
+.sidebar-icon-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Open-request count pinned to the inbox icon's top-right corner */
+.requests-badge {
+  position: absolute;
+  top: -3px;
+  right: -4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--accent);
+  color: var(--accent-contrast);
+  font-size: 0.625rem;
+  font-weight: 700;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 8px;
+  padding: 0 4px;
+  line-height: 16px;
+  box-shadow: 0 0 0 2px var(--surface);
+  pointer-events: none;
+}
+
+/* Error display */
+.sidebar-error {
+  padding: 0.75rem 1rem;
+  color: #ff6b6b;
+  font-size: 0.875rem;
+  text-align: center;
+}
+
+/* Scrollable content area */
+.sidebar-content {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Sliding panels container */
+.sidebar-panels {
+  display: flex;
+  width: 200%;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  transition: transform 0.2s ease-in-out;
+}
+
+.sidebar-panels.drilled {
+  transform: translateX(-50%);
+}
+
+/* Individual panel. The transparent right border insets the scrollbar from
+   the panel edge (scrollbars render inside the border box). */
+.sidebar-panel {
+  width: 50%;
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-bottom: 1rem;
+  border-right: 4px solid transparent;
+  box-sizing: border-box;
+}
+
+.sidebar-panel-main,
+.sidebar-panel-project {
+  flex-shrink: 0;
+}
+
+/* Custom scrollbar for panels */
+.sidebar-panel::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sidebar-panel::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar-panel::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 3px;
+}
+
+.sidebar-panel::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* Loading / empty states */
+.sidebar-loading,
+.sidebar-empty {
+  padding: 1rem 1rem 1.5rem;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+/* ---------------------------------------------------------------------------
+   Sections. Instead of hairline dividers, each section is a spaced block with
+   a bold header row; the gap between blocks does the separating.
+   --------------------------------------------------------------------------- */
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 0.75rem 0 1rem;
+  margin-bottom: 0.25rem;
+}
+
+.section-label {
+  padding: 0.375rem 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+.section-header .section-label {
+  padding-left: 0;
+}
+
+.section-add-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.15s, background-color 0.15s;
+}
+
+.section-add-button:hover:not(:disabled) {
+  color: var(--text);
+  background-color: var(--hover);
+}
+
+.section-add-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Right-hand cluster in a section header (e.g. New Chat + options menu) */
+.section-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+  flex-shrink: 0;
+}
+
+.projects-section {
+  padding-top: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.projects-section + .section-header,
+.sidebar-panel-main > .section-header {
+  margin-top: 0.5rem;
+}
+
+/* Create project button (empty state) */
+.create-project-button {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: calc(100% - 1.5rem);
+  margin: 0.125rem 0.75rem 0.25rem;
+  padding: 0.5rem 0.625rem;
+  border: 1px dashed var(--border-strong);
+  border-radius: 8px;
+  background: none;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.create-project-button:hover {
+  background-color: var(--hover);
+  color: var(--text-secondary);
+}
+
+/* ---------------------------------------------------------------------------
+   Rows. Projects, conversations, routines and routine groups all share the
+   same rounded pill geometry, inset from the sidebar edges.
+   --------------------------------------------------------------------------- */
+
+.project-group {
+  margin-bottom: 1px;
+}
+
+.project-header,
+.conversation-item,
+.routine-group-header,
+.load-more-conversations-button {
+  margin: 0 0.5rem;
+  border-radius: 8px;
+}
+
+.project-header {
+  display: flex;
+  align-items: center;
+  padding: 0.4375rem 0.5rem;
+  cursor: pointer;
+  transition: background-color 0.15s;
+  gap: 0.5rem;
+}
+
+.project-header:hover {
+  background-color: var(--hover);
+}
+
+.project-name {
+  flex: 1;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-folder-icon {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.project-nav-chevron {
+  flex-shrink: 0;
+  color: transparent;
+  margin-left: auto;
+  transition: color 0.15s;
+}
+
+.project-header:hover .project-nav-chevron {
+  color: var(--text-muted);
+}
+
+.project-loading {
+  padding: 0.5rem 1rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+/* Drill-down header (back arrow + project name) */
+.drill-down-header {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.625rem 0.75rem 0.5rem;
+  position: sticky;
+  top: 0;
+  background-color: var(--surface-raised);
+  z-index: 1;
+}
+
+.drill-down-back-button,
+.drill-down-settings-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color 0.15s, background-color 0.15s;
+  flex-shrink: 0;
+}
+
+.drill-down-settings-button {
+  color: var(--text-muted);
+}
+
+.drill-down-back-button:hover,
+.drill-down-settings-button:hover {
+  color: var(--text);
+  background-color: var(--hover);
+}
+
+.drill-down-folder-icon {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.drill-down-project-name {
+  flex: 1;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drill-down-conversations {
+  padding-top: 0.5rem;
+}
+
+.drill-down-conversations > .section-header {
+  margin-top: 0.25rem;
+}
+
+/* Conversation list */
+.conversation-list {
+  overflow-x: hidden;
+}
+
+/* "Load more" pager at the bottom of the paged top-level conversation list */
+.load-more-conversations-button {
+  display: block;
+  width: calc(100% - 1rem);
+  padding: 0.4375rem 0.5rem;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+  text-align: left;
+}
+
+.load-more-conversations-button:hover:not(:disabled) {
+  background-color: var(--hover);
+  color: var(--text);
+}
+
+.load-more-conversations-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Conversation item */
+.conversation-item {
+  position: relative;
+  padding: 0.375rem 0.5rem;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.conversation-item:hover {
+  background-color: var(--hover);
+}
+
+.conversation-item.active {
+  background-color: var(--accent-soft);
+}
+
+.conversation-title {
+  font-weight: 400;
+  margin-bottom: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.825rem;
+  color: var(--text);
+}
+
+/* Routines section in project drill-down */
+.routines-section {
+  margin-bottom: 1.5rem;
+}
+
+.routines-section .section-header {
+  margin-bottom: 0.25rem;
+}
+
+.routine-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 0.5rem;
+  padding: 0.375rem 0.25rem 0.375rem 0.5rem;
+  border-radius: 8px;
+  cursor: default;
+}
+
+.routine-item:hover {
+  background-color: var(--hover);
+}
+
+/* Matches .conversation-title so routines and conversations read as one list */
+.routine-name {
+  font-size: 0.825rem;
+  font-weight: 400;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.routine-settings-button,
+.routine-play-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  margin-left: 0.25rem;
+  transition: color 0.15s, background-color 0.15s;
+}
+
+.routine-settings-button:hover {
+  color: var(--text);
+  background-color: var(--hover);
+}
+
+.routine-play-button:hover {
+  color: rgba(80, 190, 100, 0.95);
+  background-color: rgba(80, 190, 100, 0.12);
+}
+
+.routine-play-button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.routine-schedule-indicator {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-muted);
+  margin-left: 0.25rem;
+  flex-shrink: 0;
+}
+
+/* Origin indicators next to a conversation title */
+.conversation-slack-icon,
+.conversation-subagent-icon,
+.conversation-inference-icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-muted);
+  margin-right: 6px;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+
+/* Routine conversation group (collapsible) */
+.routine-conversation-group {
+  margin-bottom: 1px;
+}
+
+.routine-group-header {
+  display: flex;
+  align-items: center;
+  padding: 0.375rem 0.5rem 0.375rem 0.375rem;
+  cursor: pointer;
+  transition: background-color 0.15s;
+  gap: 0.35rem;
+}
+
+.routine-group-header:hover {
+  background-color: var(--hover);
+}
+
+.routine-group-header.has-active {
+  background-color: var(--accent-soft);
+}
+
+.routine-group-chevron {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  transition: transform 0.15s ease;
+}
+
+.routine-group-icon {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.routine-group-name {
+  flex: 1;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.routine-group-count {
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.routine-sub-item {
+  padding-left: 2rem !important; /* indent under the group header */
+}
+
+.routine-sub-item-timestamp {
+  font-size: 0.825rem;
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+
+/* Meatball menu button */
+.conversation-menu-button {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  position: absolute;
+  right: 0.25rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color 0.15s, background-color 0.15s;
+  z-index: 2;
+}
+
+/* Hover-reveal only where hover exists. On touch devices (iOS Safari), a
+   :hover style that inserts content makes the first tap apply hover instead
+   of clicking — the row wouldn't open until the second tap. */
+@media (hover: hover) {
+  .conversation-item:hover .conversation-menu-button {
+    display: flex;
+  }
+
+  .conversation-item:hover .conversation-title {
+    padding-right: 1.5rem;
+  }
+}
+
+@media (hover: none) {
+  .conversation-menu-button {
+    display: flex;
+  }
+
+  .conversation-title {
+    padding-right: 1.5rem;
+  }
+}
+
+.conversation-menu-button:focus {
+  display: flex;
+}
+
+.conversation-menu-button:hover {
+  color: var(--text);
+  background-color: var(--pressed);
+}
+
+/* Dropdown menu */
+.conversation-menu-dropdown {
+  position: absolute;
+  right: 0.5rem;
+  top: 100%;
+  min-width: 120px;
+  background-color: var(--surface-overlay);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  box-shadow: var(--shadow-menu);
+  z-index: 10;
+  overflow: hidden;
+}
+
+.conversation-menu-item {
+  display: block;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: none;
+  background: none;
+  color: var(--text);
+  font-size: 0.8125rem;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.conversation-menu-item:hover {
+  background-color: var(--hover);
+}
+
+/* Inline rename input */
+.conversation-rename-input {
+  width: 100%;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  background-color: var(--surface-raised);
+  color: var(--text);
+  font-size: 0.8125rem;
+  font-family: inherit;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.conversation-rename-input:focus {
+  border-color: var(--accent);
+}
+
+/* Archived conversation (dimmed appearance) */
+.conversation-item.archived .conversation-title {
+  opacity: 0.5;
+  font-style: italic;
+}
+
+/* Conversation options: meatball icon button + popover menu in the section header. */
+.conversation-filter-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.conversation-filter-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.15s, background-color 0.15s;
+}
+
+.conversation-filter-button:hover {
+  color: var(--text);
+  background-color: var(--hover);
+}
+
+.conversation-filter-menu {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  margin-top: 4px;
+  min-width: 200px;
+  background-color: var(--surface-overlay);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  box-shadow: var(--shadow-menu);
+  z-index: 10;
+  padding: 0.25rem 0;
+  overflow: hidden;
+}
+
+.conversation-filter-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  color: var(--text);
+  font-size: 0.8125rem;
+  cursor: pointer;
+  transition: background-color 0.15s;
+  box-sizing: border-box;
+}
+
+.conversation-filter-menu-item:hover {
+  background-color: var(--hover);
+}
+
+.conversation-filter-menu-item input[type='checkbox'] {
+  margin: 0;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* Version update banner */
+.version-update-banner {
+  flex-shrink: 0;
+  margin: 0 0.5rem 0.5rem;
+  padding: 0.375rem 0.75rem;
+  border-radius: 8px;
+  background-color: #e65100;
+  color: #ffffff;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  text-align: center;
+}
+
+.version-update-banner a {
+  color: #ffffff;
+  text-decoration: underline;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.version-update-banner a:hover {
+  text-decoration: none;
+}
+
+/* Public-project badges (globe): shown next to the project name in the
+   projects list row and as a labeled chip in the drill-down header. */
+.project-public-badge {
+  flex-shrink: 0;
+  opacity: 0.65;
+}
+
+.drill-down-public-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-shrink: 0;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  opacity: 0.7;
+}

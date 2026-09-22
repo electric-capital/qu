@@ -1,0 +1,469 @@
+/* Project Settings Modal overlay */
+.project-settings-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.15s ease-out;
+}
+
+/* Modal container -- sidebar layout with left nav */
+.project-settings-modal {
+  background-color: #2a2a2a;
+  border-radius: 12px;
+  width: 700px;
+  max-width: 90vw;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  animation: slideUp 0.15s ease-out;
+}
+
+/* Header */
+.project-settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  flex-shrink: 0;
+}
+
+.project-settings-header h2 {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.project-settings-close-button {
+  background: none;
+  border: none;
+  padding: 0.25rem;
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.5);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s, background-color 0.15s;
+}
+
+.project-settings-close-button:hover {
+  color: rgba(255, 255, 255, 0.87);
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Body -- sidebar layout (row direction with nav + content) */
+.project-settings-body {
+  display: flex;
+  flex-direction: row;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Content area */
+.project-settings-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.5rem;
+  min-width: 0;
+}
+
+.project-settings-loading {
+  text-align: center;
+  color: rgba(255, 255, 255, 0.6);
+  padding: 2rem 0;
+}
+
+.project-settings-field {
+  margin-bottom: 1.25rem;
+}
+
+.project-settings-label {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 500;
+  margin-bottom: 0.5rem;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.project-settings-label-hint {
+  display: block;
+  font-weight: 400;
+  font-size: 0.8125rem;
+  color: rgba(255, 255, 255, 0.5);
+  margin-top: 0.25rem;
+}
+
+.project-settings-input {
+  width: 100%;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  background-color: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.87);
+  font-size: 0.9375rem;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+}
+
+.project-settings-input:focus {
+  border-color: var(--accent);
+}
+
+.project-settings-input:disabled {
+  opacity: 0.6;
+}
+
+.project-settings-textarea {
+  width: 100%;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  background-color: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.87);
+  font-size: 0.875rem;
+  font-family: inherit;
+  outline: none;
+  resize: vertical;
+  min-height: 120px;
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+  line-height: 1.5;
+}
+
+.project-settings-textarea:focus {
+  border-color: var(--accent);
+}
+
+.project-settings-textarea:disabled {
+  opacity: 0.6;
+}
+
+.project-settings-char-count {
+  text-align: right;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.4);
+  margin-top: 0.25rem;
+}
+
+.project-settings-public-note {
+  margin-bottom: 1rem;
+  padding: 0.5rem 0.75rem;
+  background-color: rgba(94, 158, 255, 0.08);
+  border: 1px solid rgba(94, 158, 255, 0.3);
+  border-radius: 6px;
+  color: #7ab2ff;
+  font-size: 0.8125rem;
+}
+
+.project-settings-error {
+  margin-bottom: 1rem;
+  padding: 0.5rem 0.75rem;
+  background-color: rgba(255, 107, 107, 0.1);
+  border: 1px solid rgba(255, 107, 107, 0.3);
+  border-radius: 6px;
+  color: #ff6b6b;
+  font-size: 0.8125rem;
+}
+
+/* Actions */
+.project-settings-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 1.5rem;
+}
+
+.project-settings-save-button {
+  padding: 0.5rem 1.25rem;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background-color: var(--accent);
+  color: var(--accent-contrast);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.project-settings-save-button:hover:not(:disabled) {
+  background-color: var(--accent-hover);
+}
+
+.project-settings-save-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Danger zone */
+.project-settings-danger-zone {
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  padding-top: 1.25rem;
+}
+
+.project-settings-danger-zone h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: #ff6b6b;
+}
+
+.project-settings-danger-zone p {
+  font-size: 0.8125rem;
+  color: rgba(255, 255, 255, 0.6);
+  margin: 0 0 1rem;
+  line-height: 1.5;
+}
+
+.project-settings-delete-button {
+  padding: 0.5rem 1rem;
+  border: 1px solid #ff6b6b;
+  border-radius: 8px;
+  background: none;
+  color: #ff6b6b;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.project-settings-delete-button:hover {
+  background-color: rgba(255, 107, 107, 0.1);
+}
+
+.project-settings-delete-confirm {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.project-settings-delete-confirm span {
+  font-size: 0.875rem;
+  color: #ff6b6b;
+  font-weight: 500;
+}
+
+.project-settings-delete-confirm-button {
+  padding: 0.5rem 1rem;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background-color: #d32f2f;
+  color: white;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.project-settings-delete-confirm-button:hover:not(:disabled) {
+  background-color: #b71c1c;
+}
+
+.project-settings-delete-confirm-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.project-settings-delete-cancel-button {
+  padding: 0.5rem 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  background: none;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.project-settings-delete-cancel-button:hover:not(:disabled) {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+/* Mobile: full-screen takeover with a two-tier drill-in nav, mirroring
+   SettingsModal. Scoped by class (set from the useIsMobile hook) rather than
+   a media query so the JS breakpoint stays the single source of truth.
+   The nav, back button, and chevron reuse the shared .settings-nav /
+   .settings-back-button / .settings-nav-chevron styles from SettingsModal.css. */
+.project-settings-overlay-mobile {
+  align-items: stretch;
+  justify-content: stretch;
+}
+
+.project-settings-modal-mobile {
+  width: 100vw;
+  max-width: none;
+  height: 100vh;
+  height: 100dvh;
+  max-height: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* iOS auto-zoom guard: the modal is portaled to document.body, outside
+   .mobile-shell, so mirror its 16px form-control rule here. */
+.project-settings-modal-mobile input,
+.project-settings-modal-mobile textarea,
+.project-settings-modal-mobile select {
+  font-size: 16px;
+}
+
+.project-settings-modal-mobile .project-settings-header {
+  gap: 0.5rem;
+}
+
+.project-settings-modal-mobile .project-settings-header h2 {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* First tier: the nav list fills the screen */
+.project-settings-modal-mobile .project-settings-body {
+  position: relative;
+}
+
+.project-settings-modal-mobile .settings-nav {
+  width: 100%;
+  box-sizing: border-box;
+  border-right: none;
+  padding: 0.75rem 1rem;
+  overflow-y: auto;
+}
+
+.project-settings-modal-mobile .settings-nav-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  font-size: 1rem;
+}
+
+/* Second tier: the section content slides over the nav list */
+.project-settings-modal-mobile .project-settings-content {
+  position: absolute;
+  inset: 0;
+  background-color: #2a2a2a;
+  padding: 1rem;
+  transform: translateX(100%);
+  visibility: hidden;
+  transition: transform 0.25s ease, visibility 0s linear 0.25s;
+}
+
+.project-settings-modal-mobile.project-settings-mobile-section-open .project-settings-content {
+  transform: translateX(0);
+  visibility: visible;
+  transition: transform 0.25s ease;
+}
+
+/* -------------------------------------------------------------------
+   Light mode
+   ------------------------------------------------------------------- */
+@media (prefers-color-scheme: light) {
+  .project-settings-modal {
+    background-color: #ffffff;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+  }
+
+  .project-settings-header {
+    border-bottom-color: rgba(0, 0, 0, 0.1);
+  }
+
+  .project-settings-header h2 {
+    color: #1a1a1a;
+  }
+
+  .project-settings-close-button {
+    color: rgba(0, 0, 0, 0.5);
+  }
+
+  .project-settings-close-button:hover {
+    color: rgba(0, 0, 0, 0.87);
+    background-color: rgba(0, 0, 0, 0.05);
+  }
+
+  .project-settings-modal-mobile .project-settings-content {
+    background-color: #ffffff;
+  }
+
+  .project-settings-loading {
+    color: rgba(0, 0, 0, 0.6);
+  }
+
+  .project-settings-label {
+    color: rgba(0, 0, 0, 0.8);
+  }
+
+  .project-settings-label-hint {
+    color: rgba(0, 0, 0, 0.5);
+  }
+
+  .project-settings-input,
+  .project-settings-textarea {
+    border-color: rgba(0, 0, 0, 0.2);
+    background-color: rgba(0, 0, 0, 0.03);
+    color: #1a1a1a;
+  }
+
+  .project-settings-char-count {
+    color: rgba(0, 0, 0, 0.4);
+  }
+
+  .project-settings-public-note {
+    background-color: rgba(25, 103, 210, 0.05);
+    border-color: rgba(25, 103, 210, 0.3);
+    color: #1967d2;
+  }
+
+  .project-settings-error {
+    background-color: rgba(211, 47, 47, 0.05);
+    border-color: rgba(211, 47, 47, 0.3);
+    color: #d32f2f;
+  }
+
+  .project-settings-danger-zone {
+    border-top-color: rgba(0, 0, 0, 0.1);
+  }
+
+  .project-settings-danger-zone h3 {
+    color: #d32f2f;
+  }
+
+  .project-settings-danger-zone p {
+    color: rgba(0, 0, 0, 0.6);
+  }
+
+  .project-settings-delete-button {
+    border-color: #d32f2f;
+    color: #d32f2f;
+  }
+
+  .project-settings-delete-button:hover {
+    background-color: rgba(211, 47, 47, 0.05);
+  }
+
+  .project-settings-delete-confirm span {
+    color: #d32f2f;
+  }
+
+  .project-settings-delete-cancel-button {
+    border-color: rgba(0, 0, 0, 0.2);
+    color: rgba(0, 0, 0, 0.7);
+  }
+
+  .project-settings-delete-cancel-button:hover:not(:disabled) {
+    background-color: rgba(0, 0, 0, 0.03);
+  }
+}

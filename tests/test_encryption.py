@@ -1,0 +1,258 @@
+"""Tests for config/encryption.py: key file lifecycle, password resolution,
+the value envelope, and the encrypted credential-file stores.
+
+The repo-root conftest gives the whole session a throwaway key file and a
+fixed test password; tests that need their own key file point
+``QUEST_ENCRYPTION_KEY_FILE`` at tmp_path and reset the cache.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import stat
+
+import pytest
+
+from config import encryption
+
+
+@pytest.fixture()
+def own_key(monkeypatch, tmp_path):
+    """Fresh key file under tmp_path with a known password; restores the
+    session key afterwards."""
+    key_file = tmp_path / "encryption_key.json"
+    monkeypatch.setenv("QUEST_ENCRYPTION_KEY_FILE", str(key_file))
+    monkeypatch.setenv("QUEST_ENCRYPTION_PASSWORD", "correct horse")
+    monkeypatch.delenv("QUEST_ENCRYPTION_PASSWORD_FILE", raising=False)
+    encryption.reset_cache()
+    yield key_file
+    encryption.reset_cache()
+    monkeypatch.undo()
+    encryption.reset_cache()
+    encryption.load_data_key(create=True)
+
+
+# ---------------------------------------------------------------------------
+# Key file
+# ---------------------------------------------------------------------------
+
+def test_create_key_file_is_private_and_wraps_a_random_key(own_key):
+    data = encryption.create_key_file("correct horse", own_key)
+    assert own_key.exists()
+    assert stat.S_IMODE(os.stat(own_key).st_mode) == 0o600
+    on_disk = json.loads(own_key.read_text())
+    assert on_disk["version"] == 1
+    assert on_disk["kdf"]["name"] == "argon2id"
+    assert on_disk["key_id"] == data["key_id"] and len(data["key_id"]) == 8
+    dek, key_id = encryption.unwrap_key_file("correct horse", on_disk)
+    assert len(dek) == 32 and key_id == data["key_id"]
+
+
+def test_wrong_password_is_rejected_clearly(own_key):
+    data = encryption.create_key_file("correct horse", own_key)
+    with pytest.raises(encryption.WrongPasswordError):
+        encryption.unwrap_key_file("battery staple", data)
+
+
+def test_create_refuses_to_overwrite_existing_key_file(own_key):
+    encryption.create_key_file("correct horse", own_key)
+    with pytest.raises(encryption.EncryptionError, match="Refusing to overwrite"):
+        encryption.create_key_file("correct horse", own_key)
+
+
+def test_load_without_create_requires_existing_file(own_key):
+    with pytest.raises(encryption.KeyFileMissingError):
+        encryption.load_data_key(create=False)
+    dek, key_id = encryption.load_data_key(create=True)
+    assert own_key.exists()
+    encryption.reset_cache()
+    assert encryption.load_data_key(create=False) == (dek, key_id)
+
+
+def test_rotate_password_keeps_the_data_key(own_key):
+    encryption.load_data_key(create=True)
+    envelope = encryption.encrypt_str("hello", "t.c")
+    encryption.rotate_password("correct horse", "new password", own_key)
+    with pytest.raises(encryption.WrongPasswordError):
+        encryption.unwrap_key_file("correct horse", encryption.read_key_file(own_key))
+    os.environ["QUEST_ENCRYPTION_PASSWORD"] = "new password"
+    encryption.reset_cache()
+    assert encryption.decrypt_str(envelope, "t.c") == "hello"
+
+
+# ---------------------------------------------------------------------------
+# Password resolution
+# ---------------------------------------------------------------------------
+
+def test_resolve_password_precedence(monkeypatch, tmp_path):
+    monkeypatch.setenv("QUEST_ENV", "prod")
+    monkeypatch.delenv("QUEST_ENCRYPTION_PASSWORD", raising=False)
+    monkeypatch.delenv("QUEST_ENCRYPTION_PASSWORD_FILE", raising=False)
+    # Nothing set, no prompt allowed -> None
+    assert encryption.resolve_password() is None
+    # Password file
+    pw_file = tmp_path / "pw"
+    pw_file.write_text("from-file\n")
+    monkeypatch.setenv("QUEST_ENCRYPTION_PASSWORD_FILE", str(pw_file))
+    assert encryption.resolve_password() == "from-file"
+    # Env var wins over the file
+    monkeypatch.setenv("QUEST_ENCRYPTION_PASSWORD", "from-env")
+    assert encryption.resolve_password() == "from-env"
+
+
+def test_resolve_password_missing_file_is_an_error(monkeypatch, tmp_path):
+    monkeypatch.delenv("QUEST_ENCRYPTION_PASSWORD", raising=False)
+    monkeypatch.setenv("QUEST_ENCRYPTION_PASSWORD_FILE", str(tmp_path / "nope"))
+    with pytest.raises(encryption.PasswordNotAvailableError):
+        encryption.resolve_password()
+
+
+def test_local_mode_falls_back_to_the_dev_sentinel(monkeypatch):
+    monkeypatch.setenv("QUEST_ENV", "local")
+    monkeypatch.delenv("QUEST_ENCRYPTION_PASSWORD", raising=False)
+    monkeypatch.delenv("QUEST_ENCRYPTION_PASSWORD_FILE", raising=False)
+    assert encryption.resolve_password() == encryption.LOCAL_DEV_PASSWORD
+    # An explicit password still wins in local mode
+    monkeypatch.setenv("QUEST_ENCRYPTION_PASSWORD", "explicit")
+    assert encryption.resolve_password() == "explicit"
+
+
+@pytest.mark.parametrize("env", ["staging", "prod"])
+def test_sentinel_password_refused_outside_local_mode(monkeypatch, tmp_path, env):
+    monkeypatch.setenv("QUEST_ENV", env)
+    key_file = tmp_path / "k.json"
+    with pytest.raises(encryption.SentinelPasswordError):
+        encryption.create_key_file(encryption.LOCAL_DEV_PASSWORD, key_file)
+    # ... and when unlocking a file that was created under it in local mode
+    monkeypatch.setenv("QUEST_ENV", "local")
+    data = encryption.create_key_file(encryption.LOCAL_DEV_PASSWORD, key_file)
+    monkeypatch.setenv("QUEST_ENV", env)
+    with pytest.raises(encryption.SentinelPasswordError):
+        encryption.unwrap_key_file(encryption.LOCAL_DEV_PASSWORD, data)
+
+
+def test_sentinel_password_accepted_in_local_mode(monkeypatch, tmp_path):
+    monkeypatch.setenv("QUEST_ENV", "local")
+    data = encryption.create_key_file(encryption.LOCAL_DEV_PASSWORD, tmp_path / "k.json")
+    dek, _ = encryption.unwrap_key_file(encryption.LOCAL_DEV_PASSWORD, data)
+    assert len(dek) == 32
+
+
+# ---------------------------------------------------------------------------
+# Value envelope
+# ---------------------------------------------------------------------------
+
+def test_encrypt_str_roundtrip_and_format():
+    envelope = encryption.encrypt_str("s3cret", "users.api_key")
+    assert encryption.is_encrypted(envelope)
+    prefix, key_id, payload = envelope.split(":", 2)
+    assert prefix + ":" == encryption.ENVELOPE_PREFIX
+    assert key_id == encryption.get_data_key()[1]
+    assert "s3cret" not in envelope
+    assert encryption.decrypt_str(envelope, "users.api_key") == "s3cret"
+
+
+def test_fresh_nonce_per_call():
+    assert encryption.encrypt_str("same", "x") != encryption.encrypt_str("same", "x")
+
+
+def test_aad_mismatch_is_rejected():
+    envelope = encryption.encrypt_str("token", "users.google_oauth")
+    with pytest.raises(encryption.EncryptionError, match="failed authentication"):
+        encryption.decrypt_str(envelope, "users.ramp_oauth")
+
+
+def test_tampered_ciphertext_is_rejected():
+    envelope = encryption.encrypt_str("token", "c")
+    prefix, key_id, payload = envelope.split(":", 2)
+    flipped = payload[:-2] + ("A" if payload[-2] != "A" else "B") + payload[-1]
+    with pytest.raises(encryption.EncryptionError):
+        encryption.decrypt_str(f"{prefix}:{key_id}:{flipped}", "c")
+
+
+def test_foreign_key_id_is_a_clear_error():
+    envelope = encryption.encrypt_str("token", "c")
+    prefix, _key_id, payload = envelope.split(":", 2)
+    with pytest.raises(encryption.KeyMismatchError):
+        encryption.decrypt_str(f"{prefix}:deadbeef:{payload}", "c")
+
+
+def test_plaintext_is_not_an_envelope():
+    assert not encryption.is_encrypted("plain-token")
+    assert not encryption.is_encrypted(None)
+    assert not encryption.is_encrypted({"a": 1})
+    with pytest.raises(encryption.EncryptionError):
+        encryption.decrypt_str("plain-token", "c")
+
+
+def test_encrypt_json_roundtrip():
+    doc = {"access_token": "abc", "scopes": ["a", "b"], "n": 1}
+    envelope = encryption.encrypt_json(doc, "users.google_oauth")
+    assert "abc" not in envelope
+    assert encryption.decrypt_json(envelope, "users.google_oauth") == doc
+
+
+def test_hash_api_key_is_sha256_hex():
+    import hashlib
+    assert encryption.hash_api_key("k") == hashlib.sha256(b"k").hexdigest()
+
+
+# ---------------------------------------------------------------------------
+# Encrypted credential files
+# ---------------------------------------------------------------------------
+
+@pytest.fixture()
+def store_dirs(monkeypatch, tmp_path):
+    import config.service_credentials as sc
+    import config.inference_providers as ip
+    svc = tmp_path / "service_credentials"
+    inf = tmp_path / "inference_credentials"
+    monkeypatch.setattr(sc, "SERVICE_CREDENTIALS_DIR", svc)
+    monkeypatch.setattr(ip, "INFERENCE_CREDENTIALS_DIR", inf)
+    monkeypatch.setattr(sc, "LEGACY_CREDENTIALS_FILE", tmp_path / "server_credentials.json")
+    return sc, ip, svc, inf
+
+
+def test_service_credentials_written_encrypted_and_read_back(store_dirs):
+    sc, _ip, svc, _inf = store_dirs
+    creds = {"client_id": "id", "client_secret": "topsecret"}
+    sc.write_service_credentials("ramp", creds)
+    on_disk = json.loads((svc / "ramp.json").read_text())
+    assert set(on_disk) == {"encrypted"}
+    assert encryption.is_encrypted(on_disk["encrypted"])
+    assert "topsecret" not in (svc / "ramp.json").read_text()
+    assert sc.read_service_credentials("ramp") == creds
+
+
+def test_service_credentials_plaintext_file_still_readable_and_sweep_encrypts(store_dirs):
+    sc, _ip, svc, _inf = store_dirs
+    svc.mkdir()
+    (svc / "ramp.json").write_text(json.dumps({"client_id": "legacy", "client_secret": "s"}))
+    assert sc.read_service_credentials("ramp") == {"client_id": "legacy", "client_secret": "s"}
+    assert sc.encrypt_plaintext_credential_files() == ["ramp"]
+    assert set(json.loads((svc / "ramp.json").read_text())) == {"encrypted"}
+    assert sc.read_service_credentials("ramp") == {"client_id": "legacy", "client_secret": "s"}
+    # Idempotent
+    assert sc.encrypt_plaintext_credential_files() == []
+
+
+def test_service_credentials_file_bound_to_its_service(store_dirs):
+    sc, _ip, svc, _inf = store_dirs
+    sc.write_service_credentials("ramp", {"client_id": "id"})
+    (svc / "google_oauth.json").write_text((svc / "ramp.json").read_text())
+    assert sc.read_service_credentials("google_oauth") is None
+
+
+def test_inference_credentials_written_encrypted_and_swept(store_dirs):
+    _sc, ip, _svc, inf = store_dirs
+    ip.write_inference_credentials("openrouter", {"api_key": "sk-or-secret"})
+    raw = (inf / "openrouter.json").read_text()
+    assert "sk-or-secret" not in raw and set(json.loads(raw)) == {"encrypted"}
+    assert ip.read_inference_credentials("openrouter") == {"api_key": "sk-or-secret"}
+    assert ip.effective_api_key("openrouter") == ("sk-or-secret", "store")
+    # Plaintext pre-baked file
+    (inf / "openrouter.json").write_text(json.dumps({"api_key": "plain"}))
+    assert ip.effective_api_key("openrouter") == ("plain", "store")
+    assert ip.encrypt_plaintext_inference_files() == ["openrouter"]
+    assert ip.effective_api_key("openrouter") == ("plain", "store")

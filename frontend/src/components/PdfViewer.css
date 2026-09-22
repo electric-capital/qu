@@ -1,0 +1,165 @@
+/* PDF viewer: two-pane layout (thumbnail rail + main page scroller) inside
+   the file viewer modal content area. */
+.pdf-viewer {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Thumbnail rail */
+.pdf-thumbnail-rail {
+  width: 160px;
+  flex-shrink: 0;
+  overflow-y: auto;
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  background-color: #222222;
+  padding: 0.75rem 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.pdf-thumbnail {
+  background: none;
+  border: 2px solid transparent;
+  border-radius: 6px;
+  padding: 0.375rem;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  flex-shrink: 0;
+  transition: background-color 0.15s, border-color 0.15s;
+}
+
+.pdf-thumbnail:hover {
+  background-color: rgba(255, 255, 255, 0.06);
+}
+
+.pdf-thumbnail-active {
+  border-color: #4da6ff;
+  background-color: rgba(77, 166, 255, 0.12);
+}
+
+/* White box doubles as the placeholder until the lazy thumbnail render lands */
+.pdf-thumbnail-canvas-wrap {
+  background-color: #ffffff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  position: relative;
+  overflow: hidden;
+}
+
+.pdf-thumbnail-canvas-wrap canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.pdf-thumbnail-label {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.pdf-thumbnail-active .pdf-thumbnail-label {
+  color: #4da6ff;
+}
+
+/* Main page scroller */
+.pdf-main-view {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  position: relative; /* offsetParent for page containers (scrollToPage) */
+  background-color: #1a1a1a;
+  padding: 16px 24px; /* keep in sync with PAGE_GAP / MAIN_PADDING_X in PdfViewer.tsx */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  outline: none;
+  box-sizing: border-box;
+}
+
+/* PDF pages are white regardless of theme; the shadow makes them read as
+   sheets on the backdrop. */
+.pdf-page {
+  position: relative;
+  background-color: #ffffff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+/* Shows through the (transparent) canvas until its opaque render lands */
+.pdf-page-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(0, 0, 0, 0.3);
+  font-size: 0.875rem;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-sizing: border-box;
+}
+
+.pdf-page-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.pdf-page-error {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #c62828;
+  font-size: 0.875rem;
+}
+
+/* Light mode */
+@media (prefers-color-scheme: light) {
+  .pdf-thumbnail-rail {
+    border-right-color: rgba(0, 0, 0, 0.1);
+    background-color: #e8e8e8;
+  }
+
+  .pdf-thumbnail:hover {
+    background-color: rgba(0, 0, 0, 0.05);
+  }
+
+  .pdf-thumbnail-active {
+    border-color: #1a73e8;
+    background-color: rgba(26, 115, 232, 0.1);
+  }
+
+  .pdf-thumbnail-canvas-wrap {
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+  }
+
+  .pdf-thumbnail-label {
+    color: rgba(0, 0, 0, 0.6);
+  }
+
+  .pdf-thumbnail-active .pdf-thumbnail-label {
+    color: #1a73e8;
+  }
+
+  .pdf-main-view {
+    background-color: #f0f0f0;
+  }
+
+  .pdf-page {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  }
+
+  .pdf-page-error {
+    color: #d32f2f;
+  }
+}

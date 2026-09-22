@@ -1,0 +1,854 @@
+/* Import highlight.js theme for rendered-markdown code blocks (idempotent --
+   also imported by Message.css; duplicate @import of the same sheet is harmless) */
+@import 'highlight.js/styles/atom-one-dark.css';
+
+/* File Viewer Modal overlay */
+.file-viewer-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.15s ease-out;
+}
+
+/* Modal container */
+.file-viewer-modal {
+  background-color: #2a2a2a;
+  border-radius: 12px;
+  width: 85vw;
+  height: 85vh;
+  max-width: 85vw;
+  max-height: 85vh;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  animation: slideUp 0.15s ease-out;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Header */
+.file-viewer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  flex-shrink: 0;
+}
+
+.file-viewer-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.file-viewer-title-group {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.file-viewer-image-meta {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.45);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.file-viewer-download-button {
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 0.375rem 0.75rem;
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.7);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.8125rem;
+  flex-shrink: 0;
+  transition: color 0.15s, background-color 0.15s, border-color 0.15s;
+}
+
+.file-viewer-download-button:hover {
+  color: rgba(255, 255, 255, 0.87);
+  background-color: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.file-viewer-close-button {
+  background: none;
+  border: none;
+  padding: 0.25rem;
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.5);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s, background-color 0.15s;
+}
+
+.file-viewer-close-button:hover {
+  color: rgba(255, 255, 255, 0.87);
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Content area */
+.file-viewer-content {
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
+}
+
+/* PDF branch: the PdfViewer child owns scrolling (two independent scroll
+   areas), so the content div must not scroll itself. */
+.file-viewer-content--pdf {
+  overflow: hidden;
+  display: flex;
+}
+
+.file-viewer-content--pdf .file-viewer-loading,
+.file-viewer-content--pdf .file-viewer-error {
+  flex: 1;
+}
+
+.file-viewer-pre {
+  margin: 0;
+  padding: 1.25rem 1.5rem;
+  white-space: pre;
+  overflow-x: auto;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.87);
+  background-color: #222222;
+  min-height: 100%;
+  box-sizing: border-box;
+}
+
+/* Image display */
+.file-viewer-image-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 1.25rem 1.5rem;
+  box-sizing: border-box;
+  background-color: #1a1a1a;
+  background-image:
+    linear-gradient(45deg, #222 25%, transparent 25%),
+    linear-gradient(-45deg, #222 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #222 75%),
+    linear-gradient(-45deg, transparent 75%, #222 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0px;
+}
+
+.file-viewer-image {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.file-viewer-image-hidden {
+  visibility: hidden;
+  position: absolute;
+}
+
+/* Loading state */
+.file-viewer-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 0.9375rem;
+}
+
+/* Error state */
+.file-viewer-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  height: 100%;
+  padding: 2rem;
+  color: #ff6b6b;
+  font-size: 0.9375rem;
+  text-align: center;
+}
+
+.file-viewer-error-icon {
+  color: #ff6b6b;
+  opacity: 0.85;
+}
+
+.file-viewer-error-message {
+  max-width: 32rem;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.file-viewer-error-download {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.25rem;
+  padding: 0.4rem 0.85rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.file-viewer-error-download:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+/* CSV preview table (styling adapted from TableViewerModal.css so the file
+   preview matches the project-tables browser; kept local rather than importing
+   the sibling modal's stylesheet, matching the markdown/PDF integration pattern) */
+.file-viewer-csv-wrapper {
+  overflow-x: auto;
+  min-height: 100%;
+}
+
+.file-viewer-csv-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+}
+
+.file-viewer-csv-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.file-viewer-csv-table th {
+  background-color: #333;
+  color: rgba(255, 255, 255, 0.87);
+  font-weight: 600;
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 2px solid rgba(255, 255, 255, 0.15);
+  white-space: nowrap;
+}
+
+.file-viewer-csv-table th.sortable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.file-viewer-csv-table th.sortable:hover {
+  background-color: #3a3a3a;
+}
+
+.file-viewer-csv-table th.sorted {
+  color: #ffffff;
+}
+
+.file-viewer-csv-table td {
+  padding: 0.375rem 0.75rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.87);
+  white-space: nowrap;
+  max-width: 400px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-viewer-csv-table tbody tr:nth-child(even) {
+  background-color: rgba(255, 255, 255, 0.02);
+}
+
+.file-viewer-csv-table tbody tr:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+/* Footer note shown when a large CSV is truncated to the render cap */
+.file-viewer-csv-note {
+  padding: 0.625rem 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.5);
+  flex-shrink: 0;
+}
+
+/* Save to Google Drive button (same style as download button) */
+.file-viewer-gdrive-button {
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 0.375rem 0.75rem;
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.7);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.8125rem;
+  flex-shrink: 0;
+  transition: color 0.15s, background-color 0.15s, border-color 0.15s;
+}
+
+.file-viewer-gdrive-button:hover {
+  color: rgba(255, 255, 255, 0.87);
+  background-color: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+/* Markdown rendered/raw sliding switch (standard track + knob) */
+.file-viewer-md-switch {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+/* Visually-hidden native checkbox drives the switch state */
+.file-viewer-md-switch-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.file-viewer-md-switch-track {
+  position: relative;
+  display: inline-block;
+  width: 34px;
+  height: 18px;
+  border-radius: 999px;
+  background-color: var(--border-strong);
+  transition: background-color 0.15s;
+  flex-shrink: 0;
+}
+
+.file-viewer-md-switch-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background-color: var(--accent-contrast);
+  transition: transform 0.15s;
+}
+
+.file-viewer-md-switch-input:checked + .file-viewer-md-switch-track {
+  background-color: var(--accent);
+}
+
+.file-viewer-md-switch-input:checked + .file-viewer-md-switch-track .file-viewer-md-switch-knob {
+  transform: translateX(16px);
+}
+
+.file-viewer-md-switch-input:focus-visible + .file-viewer-md-switch-track {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.file-viewer-md-switch-label {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+/* Rendered markdown container */
+.file-viewer-markdown {
+  padding: 1.25rem 1.5rem;
+  max-width: 860px;
+  margin: 0 auto;
+  font-size: 0.9375rem;
+  line-height: 1.65;
+  color: rgba(255, 255, 255, 0.87);
+  box-sizing: border-box;
+}
+
+.file-viewer-markdown h1,
+.file-viewer-markdown h2,
+.file-viewer-markdown h3,
+.file-viewer-markdown h4,
+.file-viewer-markdown h5,
+.file-viewer-markdown h6 {
+  margin-top: 1.25em;
+  margin-bottom: 0.5em;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.file-viewer-markdown h1:first-child,
+.file-viewer-markdown h2:first-child,
+.file-viewer-markdown h3:first-child,
+.file-viewer-markdown h4:first-child,
+.file-viewer-markdown h5:first-child,
+.file-viewer-markdown h6:first-child {
+  margin-top: 0;
+}
+
+.file-viewer-markdown h1 {
+  font-size: 1.7em;
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.file-viewer-markdown h2 {
+  font-size: 1.4em;
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.file-viewer-markdown h3 {
+  font-size: 1.2em;
+}
+
+.file-viewer-markdown p {
+  margin: 0.75em 0;
+}
+
+.file-viewer-markdown p:first-child {
+  margin-top: 0;
+}
+
+.file-viewer-markdown a {
+  color: var(--accent-text);
+  text-decoration: underline;
+  text-decoration-style: dotted;
+}
+
+.file-viewer-markdown a:hover {
+  text-decoration-style: solid;
+}
+
+.file-viewer-markdown pre {
+  margin: 0.75em 0;
+  padding: 1rem;
+  background-color: rgb(var(--accent-rgb) / 0.08);
+  border: 1px solid rgb(var(--accent-rgb) / 0.18);
+  border-radius: 6px;
+  overflow-x: auto;
+  line-height: 1.55;
+}
+
+.file-viewer-markdown pre code {
+  background-color: transparent;
+  padding: 0;
+  border-radius: 0;
+  font-size: 0.875em;
+  font-family: var(--font-mono);
+  color: var(--text);
+}
+
+.file-viewer-markdown code {
+  background-color: var(--accent-soft);
+  padding: 0.2em 0.4em;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  color: var(--accent-text);
+}
+
+.file-viewer-markdown ul,
+.file-viewer-markdown ol {
+  margin: 0.75em 0;
+  padding-left: 2em;
+}
+
+.file-viewer-markdown li {
+  margin: 0.25em 0;
+}
+
+.file-viewer-markdown ul ul,
+.file-viewer-markdown ol ol,
+.file-viewer-markdown ul ol,
+.file-viewer-markdown ol ul {
+  margin: 0.25em 0;
+}
+
+.file-viewer-markdown blockquote {
+  margin: 0.75em 0;
+  padding: 0.5em 1em;
+  border-left: 4px solid rgba(255, 255, 255, 0.3);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.file-viewer-markdown blockquote p {
+  margin: 0.5em 0;
+}
+
+.file-viewer-markdown hr {
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+  margin: 1.5em 0;
+}
+
+.file-viewer-markdown img {
+  max-width: 100%;
+}
+
+.file-viewer-markdown table {
+  border-collapse: collapse;
+  margin: 0.75em 0;
+}
+
+.file-viewer-markdown table th,
+.file-viewer-markdown table td {
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 0.5em 0.75em;
+  text-align: left;
+}
+
+.file-viewer-markdown table th {
+  background-color: rgba(255, 255, 255, 0.05);
+  font-weight: 600;
+}
+
+.file-viewer-markdown table tr:nth-child(even) {
+  background-color: rgba(255, 255, 255, 0.02);
+}
+
+/* Save to Drive dialog overlay */
+.save-to-drive-overlay {
+  position: absolute;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  z-index: 10;
+}
+
+.save-to-drive-dialog {
+  background-color: #333;
+  border-radius: 10px;
+  padding: 1.5rem;
+  width: 400px;
+  max-width: 90%;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+.save-to-drive-title {
+  margin: 0 0 1rem 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.87);
+}
+
+.save-to-drive-label {
+  display: block;
+  font-size: 0.8125rem;
+  color: rgba(255, 255, 255, 0.6);
+  margin-bottom: 0.375rem;
+}
+
+.save-to-drive-input {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  background-color: #222;
+  color: rgba(255, 255, 255, 0.87);
+  font-size: 0.875rem;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+
+.save-to-drive-input:focus {
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+.save-to-drive-input:disabled {
+  opacity: 0.5;
+}
+
+.save-to-drive-error {
+  margin-top: 0.5rem;
+  font-size: 0.8125rem;
+  color: #ff6b6b;
+}
+
+.save-to-drive-success {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  font-size: 0.875rem;
+  color: rgba(255, 255, 255, 0.87);
+}
+
+.save-to-drive-link {
+  color: #4da6ff;
+  text-decoration: none;
+  font-size: 0.875rem;
+}
+
+.save-to-drive-link:hover {
+  text-decoration: underline;
+}
+
+.save-to-drive-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.save-to-drive-btn {
+  padding: 0.4375rem 1rem;
+  border-radius: 6px;
+  font-size: 0.8125rem;
+  cursor: pointer;
+  border: none;
+  transition: background-color 0.15s, opacity 0.15s;
+}
+
+.save-to-drive-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.save-to-drive-btn-primary {
+  background-color: #4da6ff;
+  color: #fff;
+}
+
+.save-to-drive-btn-primary:hover:not(:disabled) {
+  background-color: #3d96ef;
+}
+
+.save-to-drive-btn-secondary {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.save-to-drive-btn-secondary:hover:not(:disabled) {
+  background-color: rgba(255, 255, 255, 0.15);
+}
+
+/* Light mode */
+@media (prefers-color-scheme: light) {
+  .file-viewer-modal {
+    background-color: #ffffff;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+  }
+
+  .file-viewer-header {
+    border-bottom-color: rgba(0, 0, 0, 0.1);
+  }
+
+  .file-viewer-title {
+    color: #1a1a1a;
+  }
+
+  .file-viewer-image-meta {
+    color: rgba(0, 0, 0, 0.4);
+  }
+
+  .file-viewer-download-button {
+    border-color: rgba(0, 0, 0, 0.2);
+    color: rgba(0, 0, 0, 0.7);
+  }
+
+  .file-viewer-download-button:hover {
+    color: rgba(0, 0, 0, 0.87);
+    background-color: rgba(0, 0, 0, 0.05);
+    border-color: rgba(0, 0, 0, 0.3);
+  }
+
+  .file-viewer-close-button {
+    color: rgba(0, 0, 0, 0.5);
+  }
+
+  .file-viewer-close-button:hover {
+    color: rgba(0, 0, 0, 0.87);
+    background-color: rgba(0, 0, 0, 0.05);
+  }
+
+  .file-viewer-pre {
+    color: #1a1a1a;
+    background-color: #f5f5f5;
+  }
+
+  .file-viewer-loading {
+    color: rgba(0, 0, 0, 0.5);
+  }
+
+  .file-viewer-error {
+    color: #d32f2f;
+  }
+
+  .file-viewer-error-icon {
+    color: #d32f2f;
+  }
+
+  .file-viewer-error-message {
+    color: rgba(0, 0, 0, 0.75);
+  }
+
+  .file-viewer-error-download {
+    border-color: rgba(0, 0, 0, 0.2);
+    background: rgba(0, 0, 0, 0.04);
+    color: rgba(0, 0, 0, 0.8);
+  }
+
+  .file-viewer-error-download:hover {
+    background: rgba(0, 0, 0, 0.08);
+    border-color: rgba(0, 0, 0, 0.35);
+  }
+
+  .file-viewer-image-container {
+    background-color: #f0f0f0;
+    background-image:
+      linear-gradient(45deg, #e0e0e0 25%, transparent 25%),
+      linear-gradient(-45deg, #e0e0e0 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, #e0e0e0 75%),
+      linear-gradient(-45deg, transparent 75%, #e0e0e0 75%);
+    background-size: 16px 16px;
+    background-position: 0 0, 0 8px, 8px -8px, -8px 0px;
+  }
+
+  .file-viewer-gdrive-button {
+    border-color: rgba(0, 0, 0, 0.2);
+    color: rgba(0, 0, 0, 0.7);
+  }
+
+  .file-viewer-gdrive-button:hover {
+    color: rgba(0, 0, 0, 0.87);
+    background-color: rgba(0, 0, 0, 0.05);
+    border-color: rgba(0, 0, 0, 0.3);
+  }
+
+  .file-viewer-markdown {
+    color: #1a1a1a;
+  }
+
+  .file-viewer-markdown h1,
+  .file-viewer-markdown h2 {
+    border-bottom-color: rgba(0, 0, 0, 0.12);
+  }
+
+  .file-viewer-markdown pre {
+    background-color: rgb(var(--accent-rgb) / 0.05);
+    border-color: rgb(var(--accent-rgb) / 0.15);
+  }
+
+  .file-viewer-markdown blockquote {
+    border-left-color: rgba(0, 0, 0, 0.2);
+    color: rgba(0, 0, 0, 0.65);
+  }
+
+  .file-viewer-markdown hr {
+    border-top-color: rgba(0, 0, 0, 0.15);
+  }
+
+  .file-viewer-markdown table th,
+  .file-viewer-markdown table td {
+    border-color: rgba(0, 0, 0, 0.2);
+  }
+
+  .file-viewer-markdown table th {
+    background-color: rgba(0, 0, 0, 0.04);
+  }
+
+  .file-viewer-markdown table tr:nth-child(even) {
+    background-color: rgba(0, 0, 0, 0.02);
+  }
+
+  .file-viewer-csv-table th {
+    background-color: #f0f0f0;
+    color: #1a1a1a;
+    border-bottom-color: rgba(0, 0, 0, 0.15);
+  }
+
+  .file-viewer-csv-table th.sortable:hover {
+    background-color: #e6e6e6;
+  }
+
+  .file-viewer-csv-table th.sorted {
+    color: #000000;
+  }
+
+  .file-viewer-csv-table td {
+    color: #1a1a1a;
+    border-bottom-color: rgba(0, 0, 0, 0.06);
+  }
+
+  .file-viewer-csv-table tbody tr:nth-child(even) {
+    background-color: rgba(0, 0, 0, 0.02);
+  }
+
+  .file-viewer-csv-table tbody tr:hover {
+    background-color: rgba(0, 0, 0, 0.04);
+  }
+
+  .file-viewer-csv-note {
+    border-top-color: rgba(0, 0, 0, 0.1);
+    color: rgba(0, 0, 0, 0.5);
+  }
+
+  .save-to-drive-dialog {
+    background-color: #fff;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  }
+
+  .save-to-drive-title {
+    color: #1a1a1a;
+  }
+
+  .save-to-drive-label {
+    color: rgba(0, 0, 0, 0.6);
+  }
+
+  .save-to-drive-input {
+    background-color: #f5f5f5;
+    border-color: rgba(0, 0, 0, 0.2);
+    color: #1a1a1a;
+  }
+
+  .save-to-drive-input:focus {
+    border-color: rgba(0, 0, 0, 0.4);
+  }
+
+  .save-to-drive-error {
+    color: #d32f2f;
+  }
+
+  .save-to-drive-success {
+    color: #1a1a1a;
+  }
+
+  .save-to-drive-link {
+    color: #1a73e8;
+  }
+
+  .save-to-drive-btn-secondary {
+    background-color: rgba(0, 0, 0, 0.06);
+    color: rgba(0, 0, 0, 0.7);
+  }
+
+  .save-to-drive-btn-secondary:hover:not(:disabled) {
+    background-color: rgba(0, 0, 0, 0.1);
+  }
+}

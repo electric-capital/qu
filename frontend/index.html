@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Quest" />
+    <meta name="theme-color" content="#575ef2" />
+    <!-- Apply the cached Settings > Appearance colour scheme and colour theme
+         before the first paint so neither flashes the default. Mirrors the
+         localStorage keys in src/utils/theme.ts and src/utils/colorTheme.ts;
+         the server values from /me re-sync them after login. -->
+    <script>
+      try {
+        var quest_theme = localStorage.getItem('quest_theme');
+        if (quest_theme === 'light' || quest_theme === 'dark') {
+          document.documentElement.setAttribute('data-theme', quest_theme);
+        }
+        var quest_color_theme = localStorage.getItem('quest_color_theme');
+        // Known ids: keep in step with COLOR_THEMES in src/utils/colorTheme.ts.
+        document.documentElement.setAttribute(
+          'data-color-theme',
+          quest_color_theme === 'electric-blue' ||
+          quest_color_theme === 'alloy' ||
+          quest_color_theme === 'recall'
+            ? quest_color_theme
+            : 'prototype'
+        );
+      } catch (e) {}
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+    <title>Quest</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

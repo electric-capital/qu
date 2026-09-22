@@ -1,0 +1,34 @@
+/* Shared date-range picker for the ranged System Reports sections. Styling
+   matches the section-header controls in CostAnalysisTable.css (where these
+   rules lived before extraction). */
+
+.report-range-select {
+  background-color: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 0.6875rem;
+  padding: 0.125rem 0.25rem;
+  cursor: pointer;
+}
+
+.report-custom-range {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.report-custom-range input[type='date'] {
+  background-color: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 0.6875rem;
+  padding: 0.125rem 0.25rem;
+  color-scheme: dark;
+}
+
+.report-custom-range-sep {
+  font-size: 0.6875rem;
+  color: rgba(255, 255, 255, 0.45);
+}

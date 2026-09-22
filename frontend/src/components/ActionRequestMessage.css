@@ -1,0 +1,416 @@
+/* Action Request Message Styles */
+
+.action-request-message {
+  display: flex;
+  gap: 0.75rem;
+  background-color: #1a1a2e;
+  border: 1px solid #3a3a6a;
+  border-radius: 8px;
+  margin: 0.5rem 0;
+  padding: 1rem;
+  animation: fadeIn 0.3s ease-in;
+}
+
+.action-request-message.pending {
+  border-color: var(--accent);
+  box-shadow: 0 0 8px rgb(var(--accent-rgb) / 0.15);
+}
+
+.action-request-message.executed {
+  border-color: rgba(80, 200, 120, 0.4);
+  opacity: 0.85;
+}
+
+.action-request-message.denied,
+.action-request-message.stopped {
+  border-color: rgba(255, 100, 100, 0.3);
+  opacity: 0.7;
+}
+
+/* Icon */
+.action-request-icon {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background-color: #3a3a6a;
+  border-radius: 6px;
+  color: #a0a0ff;
+  flex-shrink: 0;
+  padding-top: 6px;
+}
+
+/* Body */
+.action-request-body {
+  flex-grow: 1;
+  min-width: 0;
+}
+
+/* Header */
+.action-request-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.action-request-display-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: #e0e0e0;
+}
+
+.action-request-id {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.4);
+  background-color: rgba(255, 255, 255, 0.08);
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  font-family: monospace;
+}
+
+/* Reasoning */
+.action-request-reasoning {
+  font-style: italic;
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.6);
+  margin-bottom: 0.75rem;
+  line-height: 1.4;
+}
+
+/* Preview */
+.action-request-preview {
+  background-color: #0d0d1a;
+  border-radius: 6px;
+  padding: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.action-request-preview-field {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.action-request-preview-field:last-child {
+  margin-bottom: 0;
+}
+
+.action-request-preview-key {
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.6);
+  flex-shrink: 0;
+}
+
+.action-request-preview-value {
+  color: #e0e0e0;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+/* Thread context */
+.action-request-thread-context {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.action-request-thread-context > .action-request-preview-key {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-size: 0.85rem;
+}
+
+.action-request-thread-messages {
+  border-left: 2px solid rgb(var(--accent-rgb) / 0.3);
+  padding-left: 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.action-request-thread-parent,
+.action-request-thread-reply {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.action-request-thread-parent {
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.action-request-thread-user {
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.75rem;
+}
+
+.action-request-thread-text {
+  color: rgba(255, 255, 255, 0.55);
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.action-request-thread-gap {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.35);
+  font-style: italic;
+  padding: 0.1rem 0;
+}
+
+.action-request-preview pre {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #e0e0e0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Error */
+.action-request-error {
+  color: #ff6464;
+  font-size: 0.85rem;
+  margin-bottom: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background-color: rgba(255, 100, 100, 0.1);
+  border-radius: 6px;
+  border: 1px solid rgba(255, 100, 100, 0.2);
+}
+
+/* Buttons */
+.action-request-buttons {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.action-request-btn {
+  padding: 0.4rem 0.8rem;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.action-request-btn.approve {
+  background-color: #2ea043;
+  color: white;
+}
+
+.action-request-btn.approve:hover:not(:disabled) {
+  background-color: #268a38;
+}
+
+.action-request-btn.revise {
+  background-color: #d99f34;
+  color: #1a1a1a;
+}
+
+.action-request-btn.revise:hover:not(:disabled) {
+  background-color: #c08c2c;
+}
+
+.action-request-btn.deny,
+.action-request-btn.stop {
+  background-color: #cf3030;
+  color: white;
+}
+
+.action-request-btn.deny:hover:not(:disabled),
+.action-request-btn.stop:hover:not(:disabled) {
+  background-color: #b22828;
+}
+
+.action-request-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Collapsed state (after decision) */
+.action-request-message.collapsed {
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+}
+
+.action-request-outcome-text {
+  font-size: 0.85rem;
+}
+
+.action-request-outcome-status {
+  font-weight: 600;
+}
+
+.action-request-message.executed .action-request-outcome-status {
+  color: #50c878;
+}
+
+.action-request-message.denied .action-request-outcome-status,
+.action-request-message.stopped .action-request-outcome-status {
+  color: rgba(255, 100, 100, 0.7);
+}
+
+.action-request-outcome-content {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+/* Expandable details on resolved cards */
+.action-request-message.collapsed.expanded {
+  align-items: flex-start;
+}
+
+.action-request-collapsed-body {
+  flex-grow: 1;
+  min-width: 0;
+}
+
+.action-request-collapsed-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.action-request-collapsed-row .action-request-outcome-text {
+  flex-grow: 1;
+  min-width: 0;
+}
+
+.action-request-expand-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.4);
+  cursor: pointer;
+  transition: color 0.2s ease, background-color 0.2s ease;
+}
+
+.action-request-expand-toggle:hover {
+  color: rgba(255, 255, 255, 0.8);
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.action-request-expand-toggle svg {
+  transition: transform 0.2s ease;
+}
+
+.action-request-message.collapsed.expanded .action-request-expand-toggle svg {
+  transform: rotate(180deg);
+}
+
+.action-request-expanded-details {
+  margin-top: 0.5rem;
+}
+
+.action-request-expanded-details .action-request-reasoning {
+  margin-bottom: 0.5rem;
+}
+
+.action-request-expanded-details .action-request-preview {
+  margin-bottom: 0;
+}
+
+/* Light mode support */
+@media (prefers-color-scheme: light) {
+  .action-request-message {
+    background-color: #f0f0f8;
+    border-color: #d0d0e0;
+  }
+
+  .action-request-message.pending {
+    border-color: var(--accent);
+    box-shadow: 0 0 8px rgb(var(--accent-rgb) / 0.1);
+  }
+
+  .action-request-icon {
+    background-color: #d0d0e8;
+    color: #6060a0;
+  }
+
+  .action-request-display-name {
+    color: #333333;
+  }
+
+  .action-request-id {
+    color: rgba(0, 0, 0, 0.4);
+    background-color: rgba(0, 0, 0, 0.06);
+  }
+
+  .action-request-reasoning {
+    color: rgba(0, 0, 0, 0.6);
+  }
+
+  .action-request-preview {
+    background-color: #ffffff;
+    border: 1px solid #e0e0e8;
+  }
+
+  .action-request-preview-key {
+    color: rgba(0, 0, 0, 0.6);
+  }
+
+  .action-request-preview-value {
+    color: #333333;
+  }
+
+  .action-request-preview pre {
+    color: #333333;
+  }
+
+  .action-request-thread-context {
+    border-top-color: rgba(0, 0, 0, 0.08);
+  }
+
+  .action-request-thread-messages {
+    border-left-color: rgb(var(--accent-rgb) / 0.25);
+  }
+
+  .action-request-thread-parent {
+    border-bottom-color: rgba(0, 0, 0, 0.06);
+  }
+
+  .action-request-thread-user {
+    color: rgba(0, 0, 0, 0.7);
+  }
+
+  .action-request-thread-text {
+    color: rgba(0, 0, 0, 0.55);
+  }
+
+  .action-request-thread-gap {
+    color: rgba(0, 0, 0, 0.35);
+  }
+
+  .action-request-error {
+    color: #cc3333;
+    background-color: rgba(255, 100, 100, 0.08);
+    border-color: rgba(255, 100, 100, 0.15);
+  }
+
+  .action-request-outcome-content {
+    color: rgba(0, 0, 0, 0.5);
+  }
+
+  .action-request-expand-toggle {
+    color: rgba(0, 0, 0, 0.4);
+  }
+
+  .action-request-expand-toggle:hover {
+    color: rgba(0, 0, 0, 0.8);
+    background-color: rgba(0, 0, 0, 0.06);
+  }
+}

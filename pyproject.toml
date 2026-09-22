@@ -1,0 +1,59 @@
+[project]
+name = "quest"
+version = "0.1.0"
+description = "Self-hosted AI agent workbench: LLM agents with fenced, human-approved access to connected services"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+dependencies = [
+    "fastapi>=0.109.0",
+    "uvicorn>=0.27.0",
+    "httpx>=0.26.0",
+    "google-auth>=2.49.1",
+    "google-auth-oauthlib>=1.2.0",
+    "google-api-python-client>=2.100.0",
+    "itsdangerous>=2.0.0",
+    "python-dateutil>=2.8.0",
+    "websockets>=13.0",
+    "aiofiles>=25.1.0",
+    "python-multipart>=0.0.22",
+    "telethon>=1.42.0",
+    "google-genai>=1.0.0",
+    "anthropic[vertex]>=1.0.0",
+    "sqlalchemy>=2.0.0",
+    "aiosqlite>=0.20.0",
+    "alembic>=1.14.0",
+    "markdown>=3.5",
+    "sqlitedict>=2.1.0",
+    "slack-sdk>=3.41.0",
+    "aiohttp>=3.13.5",
+    "openai>=3.0.0",
+    # Encryption at rest (config/encryption.py): AES-256-GCM + Argon2id
+    "cryptography>=42.0.0",
+    "markdownify>=1.2.3",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+
+[dependency-groups]
+dev = [
+    "honcho>=2.0.0",
+    "pytest>=8.0.0",
+]
+
+[tool.uv]
+exclude-newer = "1 week"
+
+[tool.pytest.ini_options]
+# Core tests plus every in-tree plugin's own tests/ directory; the
+# repo-root conftest.py additionally appends <root>/<name>/tests for
+# out-of-tree plugins on QUEST_PLUGIN_PATH when no paths are given.
+testpaths = ["tests", "plugins"]
+# Keep the repo root importable regardless of which paths are collected
+# (out-of-tree plugin suites import quest modules and tests.plugin_support).
+pythonpath = ["."]

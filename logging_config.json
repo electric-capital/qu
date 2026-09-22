@@ -1,0 +1,76 @@
+{
+    "version": 1,
+    "disable_existing_loggers": false,
+    "formatters": {
+        "default": {
+            "()": "uvicorn.logging.DefaultFormatter",
+            "fmt": "%(levelprefix)s %(asctime)s [%(process)d] %(name)-20s %(message)s",
+            "datefmt": "%Y-%m-%d %H:%M:%S",
+            "use_colors": null
+        },
+        "access": {
+            "()": "uvicorn.logging.AccessFormatter",
+            "fmt": "%(levelprefix)s %(asctime)s [%(process)d] %(name)-20s %(client_addr)s - \"%(request_line)s\" %(status_code)s",
+            "datefmt": "%Y-%m-%d %H:%M:%S",
+            "use_colors": null
+        },
+        "large_tool_results": {
+            "format": "%(message)s"
+        }
+    },
+    "handlers": {
+        "default": {
+            "formatter": "default",
+            "class": "logging.StreamHandler",
+            "stream": "ext://sys.stderr"
+        },
+        "access": {
+            "formatter": "access",
+            "class": "logging.StreamHandler",
+            "stream": "ext://sys.stderr"
+        },
+        "large_tool_results_file": {
+            "formatter": "large_tool_results",
+            "class": "logging.handlers.RotatingFileHandler",
+            "filename": "data/logs/large_tool_results.jsonl",
+            "maxBytes": 52428800,
+            "backupCount": 3,
+            "encoding": "utf-8"
+        }
+    },
+    "loggers": {
+        "uvicorn": {
+            "handlers": ["default"],
+            "level": "INFO",
+            "propagate": false
+        },
+        "uvicorn.error": {
+            "level": "INFO"
+        },
+        "uvicorn.access": {
+            "handlers": ["access"],
+            "level": "INFO",
+            "propagate": false
+        },
+        "chat": {
+            "handlers": ["default"],
+            "level": "INFO",
+            "propagate": false
+        },
+        "auth": {
+            "handlers": ["default"],
+            "level": "INFO",
+            "propagate": false
+        },
+        "quest": {
+            "handlers": ["default"],
+            "level": "INFO",
+            "propagate": false
+        },
+        "large_tool_results": {
+            "handlers": ["large_tool_results_file"],
+            "level": "INFO",
+            "propagate": false
+        }
+    }
+}

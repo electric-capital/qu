@@ -1,0 +1,125 @@
+/* Token-cost "Learn more" modal. Mirrors the NewProjectModal overlay/modal
+   conventions (dark-first, light-mode override block) with a scrollable
+   reading body. */
+
+.token-cost-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.15s ease-out;
+}
+
+.token-cost-modal {
+  background-color: #2a2a2a;
+  border-radius: 12px;
+  width: 560px;
+  max-width: 90vw;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  animation: slideUp 0.15s ease-out;
+}
+
+@keyframes slideUp {
+  from { transform: translateY(8px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.token-cost-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.token-cost-header h2 {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.token-cost-close-button {
+  background: none;
+  border: none;
+  padding: 0.25rem;
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.5);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s, background-color 0.15s;
+}
+
+.token-cost-close-button:hover {
+  color: rgba(255, 255, 255, 0.87);
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.token-cost-content {
+  padding: 0.5rem 1.5rem 1.5rem;
+  overflow-y: auto;
+  font-size: 0.875rem;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.token-cost-content h3 {
+  margin: 1.1rem 0 0.35rem;
+  font-size: 0.95rem;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.token-cost-content p {
+  margin: 0.35rem 0;
+}
+
+.token-cost-content ol {
+  margin: 0.35rem 0;
+  padding-left: 1.4rem;
+}
+
+.token-cost-content li {
+  margin: 0.25rem 0;
+}
+
+@media (prefers-color-scheme: light) {
+  .token-cost-modal {
+    background-color: #ffffff;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+  }
+
+  .token-cost-header {
+    border-bottom-color: rgba(0, 0, 0, 0.1);
+  }
+
+  .token-cost-header h2 {
+    color: #1a1a1a;
+  }
+
+  .token-cost-close-button {
+    color: rgba(0, 0, 0, 0.5);
+  }
+
+  .token-cost-close-button:hover {
+    color: rgba(0, 0, 0, 0.87);
+    background-color: rgba(0, 0, 0, 0.05);
+  }
+
+  .token-cost-content {
+    color: rgba(0, 0, 0, 0.7);
+  }
+
+  .token-cost-content h3 {
+    color: rgba(0, 0, 0, 0.9);
+  }
+}
