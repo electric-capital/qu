@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+  <!-- Same geometry and diagonal wash as src/components/QuestLogo.tsx; fixed
+       electric-blue-accent stop colours (#00bbf2 mixed 6% toward black / 12%
+       toward white) because the favicon renders outside the app's theme
+       tokens. -->
+  <defs>
+    <linearGradient id="quest-logo-wash" gradientUnits="userSpaceOnUse" x1="7" y1="7" x2="41" y2="41">
+      <stop offset="0" stop-color="#00b0e3"/>
+      <stop offset="1" stop-color="#1fc3f4"/>
+    </linearGradient>
+  </defs>
+  <path fill="url(#quest-logo-wash)" fill-opacity="0.35" d="M33.01 41.31 Q33.76 42.61 32.26 42.61 L15.74 42.61 Q14.24 42.61 14.99 41.31 L18.74 34.82 Q19.49 33.52 20.99 33.52 L27.01 33.52 Q28.51 33.52 29.26 34.82 Z M4.50 23.15 Q3.00 23.15 3.75 21.85 L12.01 7.54 Q12.76 6.24 13.51 7.54 L17.26 14.03 Q18.01 15.33 17.26 16.63 L14.25 21.85 Q13.50 23.15 12.00 23.15 Z M34.49 7.54 Q35.24 6.24 35.99 7.54 L44.25 21.85 Q45.00 23.15 43.50 23.15 L36.00 23.15 Q34.50 23.15 33.75 21.85 L30.74 16.63 Q29.99 15.33 30.74 14.03 Z"/>
+  <path fill="url(#quest-logo-wash)" fill-opacity="0.5" d="M13.51 40.46 Q12.76 41.76 12.01 40.46 L3.75 26.15 Q3.00 24.85 4.50 24.85 L12.00 24.85 Q13.50 24.85 14.25 26.15 L17.26 31.37 Q18.01 32.67 17.26 33.97 Z M14.99 6.69 Q14.24 5.39 15.74 5.39 L32.26 5.39 Q33.76 5.39 33.01 6.69 L29.26 13.18 Q28.51 14.48 27.01 14.48 L20.99 14.48 Q19.49 14.48 18.74 13.18 Z"/>
+  <path fill="url(#quest-logo-wash)" d="M43.50 24.85 Q45.00 24.85 44.25 26.15 L35.99 40.46 Q35.24 41.76 34.49 40.46 L26.22 26.15 Q25.47 24.85 26.97 24.85 Z"/>
+</svg>
