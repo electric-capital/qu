@@ -80,14 +80,17 @@ LOCAL_RUNS_KEEP = 5
 #                           unless that file already exists, so the service
 #                           shows up pre-configured in the admin Settings >
 #                           Service Credentials section.
-#   inference_credentials   Mapping of inference provider name -> credentials
+#   inference_credentials   Mapping of provider-instance id -> credentials
 #                           object (e.g. "openrouter": {"api_key": "..."}),
 #                           copied verbatim into the inference-credential
 #                           store at
-#                           <data_dir>/inference_credentials/<provider>.json
+#                           <data_dir>/inference_credentials/<instance>.json
 #                           unless that file already exists, so API-key LLM
-#                           backends (Settings > Inference Providers) come up
-#                           pre-configured in every local instance.
+#                           instances (Settings > Inference Providers) come
+#                           up pre-configured in every local instance. The
+#                           id "openrouter" is the legacy instance seeded
+#                           with the historical curated models; any other
+#                           id becomes an empty OpenRouter instance.
 #   oauth_hostname          Hostname exported as QUEST_OAUTH_HOSTNAME so
 #                           OAuth callback URLs use it instead of the raw
 #                           request host (Google rejects private-IP
@@ -529,17 +532,22 @@ def print_local_service_summary(project_root: Path, data_dir: Path) -> None:
         or config.get("gemini_vertex", {}).get("vertex_project_id")
         or anthropic_project
     )
-    # The store file is encrypted ({"encrypted": ...}) once the app has run;
-    # a freshly pre-baked one is still plaintext ({"api_key": ...}).
-    openrouter_file = _read_json(data_dir / "inference_credentials" / "openrouter.json")
-    openrouter_configured = bool(
-        openrouter_file.get("api_key") or openrouter_file.get("encrypted")
+    # One credential file per provider instance (Settings > Inference
+    # Providers; dev-config pre-baking). A store file is encrypted
+    # ({"encrypted": ...}) once the app has run; a freshly pre-baked one is
+    # still plaintext ({"api_key": ...}).
+    inference_store = data_dir / "inference_credentials"
+    openrouter_configured = any(
+        _read_json(path).get("api_key") or _read_json(path).get("encrypted")
+        for path in (
+            sorted(inference_store.glob("*.json")) if inference_store.is_dir() else []
+        )
     )
 
     checks = [
         ("Anthropic on Vertex (Claude models)", bool(anthropic_project)),
         ("Gemini on Vertex (all Gemini models)", bool(gemini_vertex_project)),
-        ("OpenRouter (API-key models)", openrouter_configured),
+        ("OpenRouter (API-key model instances)", openrouter_configured),
         ("Google OAuth (login + Google services)", google_oauth_configured),
         ("Slack", _service_configured("slack", creds.get("slack"))),
         ("GitHub OAuth", _service_configured("github", creds.get("github"))),

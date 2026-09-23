@@ -66,21 +66,21 @@ def validate_model_value(model) -> str:
     Deprecated ids are rejected (they stay runnable on existing routines but
     cannot be newly assigned). Returns the stripped model id.
     """
-    from chat.llm.config import MODEL_REGISTRY
+    from chat.llm.config import list_model_specs, resolve_model
 
     if not isinstance(model, str) or not model.strip():
         raise ValueError("model must be a non-empty string.")
     model = model.strip()
-    entry = MODEL_REGISTRY.get(model)
-    valid = [mid for mid, e in MODEL_REGISTRY.items() if not e.get("deprecated")]
-    if entry is None:
+    spec = resolve_model(model)
+    valid = [s.id for s in list_model_specs() if not s.deprecated]
+    if spec is None:
         raise ValueError(f"Unknown model '{model}'. Valid models: {valid}")
-    if entry.get("deprecated"):
+    if spec.deprecated:
         raise ValueError(
             f"Model '{model}' is deprecated and cannot be newly assigned to "
             f"a routine. Valid models: {valid}"
         )
-    return model
+    return spec.id
 
 
 def validate_schedule_spec(schedule) -> dict:

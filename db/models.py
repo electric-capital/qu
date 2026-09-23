@@ -14,7 +14,11 @@ from db.encrypted_types import EncryptedJSON, EncryptedText
 
 
 class ModelId(StrEnum):
-    """Known LLM model identifiers across all providers (Gemini, Anthropic, OpenRouter)."""
+    """Vertex model identifiers (Gemini, Anthropic) -- a historical enum kept
+    for readability of call rows; NOT the source of truth for what is
+    selectable (see chat/llm/config.py resolve_model). Instance-served
+    models (OpenRouter) carry ``<instance_id>:<wire_id>`` ids and are not
+    listed here."""
     GEMINI_3_1_PRO = "gemini-3.1-pro-preview"  # Deprecated: hidden from the model selector; existing rows still run it (now on Vertex)
     GEMINI_3_PRO = "gemini-3-pro-preview"  # Deprecated: replaced by GEMINI_3_1_PRO for new conversations
     GEMINI_3_FLASH = "gemini-3-flash-preview"  # Deprecated: hidden from the model selector; existing rows still run it
@@ -32,8 +36,6 @@ class ModelId(StrEnum):
     CLAUDE_SONNET_5 = "claude-sonnet-5"
     CLAUDE_OPUS_5 = "claude-opus-5"
     CLAUDE_OPUS_5_5 = "claude-opus-5-5"
-    DEEPSEEK_V4_FLASH_0731 = "deepseek/deepseek-v4-flash-0731"  # OpenRouter-served
-    QWEN_3_8_27B = "qwen/qwen3.8-27b"  # OpenRouter-served
 
 
 class ApiCallType(StrEnum):

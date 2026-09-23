@@ -119,12 +119,16 @@ async def get_app_config():
     model-health store (see chat/llm/health.py).
     """
     from config import environment
-    from chat.llm.config import get_available_models
+    from chat.llm.config import get_available_models, public_model_catalog
     from auth.config import allowed_login_domain, login_restriction_description
 
     return {
         "quest_env": environment.get_quest_env(),
         "available_models": get_available_models(),
+        # Metadata for every known model (incl. deprecated / admin-disabled
+        # ones so old conversations still label correctly); the frontend
+        # model catalog is built from this instead of a hand-mirrored list.
+        "models": public_model_catalog(),
         "allowed_login_domain": allowed_login_domain(),
         # Human-readable sign-in restriction for the sign-in screen note.
         # Never enumerates the allowed_login_emails whitelist (this
@@ -247,11 +251,11 @@ async def update_settings(
     # slack_default_model: validate against MODEL_REGISTRY; treat empty
     # string as "clear" so the stored value becomes None (server default).
     if "slack_default_model" in update_data:
-        from chat.llm.config import MODEL_REGISTRY
+        from chat.llm.config import resolve_model
         candidate = update_data["slack_default_model"]
         if candidate == "":
             update_data["slack_default_model"] = None
-        elif candidate not in MODEL_REGISTRY:
+        elif resolve_model(candidate) is None:
             raise HTTPException(
                 status_code=400,
                 detail={
@@ -265,11 +269,11 @@ async def update_settings(
     # stored value becomes None (FE falls back to Opus 4.8). Mirrors the
     # slack_default_model handling above.
     if "default_model" in update_data:
-        from chat.llm.config import MODEL_REGISTRY
+        from chat.llm.config import resolve_model
         candidate = update_data["default_model"]
         if candidate == "":
             update_data["default_model"] = None
-        elif candidate not in MODEL_REGISTRY:
+        elif resolve_model(candidate) is None:
             raise HTTPException(
                 status_code=400,
                 detail={

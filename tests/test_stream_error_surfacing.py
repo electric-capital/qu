@@ -295,7 +295,7 @@ def test_run_appends_durable_error_and_partial_text(_patched_conversation):
 
     import chat.llm.config as llm_config
     orig_get_instance = llm_config.get_provider_instance
-    conv_mod.get_provider_instance = lambda _n: provider  # type: ignore[assignment]
+    conv_mod.get_provider_instance = lambda _n, _i=None: provider  # type: ignore[assignment]
     try:
         events: list[dict] = []
 

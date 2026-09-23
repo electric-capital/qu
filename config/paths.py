@@ -67,6 +67,8 @@ SECRET_KEY_FILE: Path = DATA_DIR / "secret_key"
 LOG_DIR: Path = DATA_DIR / "logs"
 SERVICE_CREDENTIALS_DIR: Path = DATA_DIR / "service_credentials"
 INFERENCE_CREDENTIALS_DIR: Path = DATA_DIR / "inference_credentials"
+INFERENCE_PROVIDERS_FILE: Path = DATA_DIR / "inference_providers.json"
+OPENROUTER_CATALOG_FILE: Path = DATA_DIR / "openrouter_catalog.json"
 MODEL_HEALTH_FILE: Path = DATA_DIR / "model_health.json"
 FEATURE_GATES_FILE: Path = DATA_DIR / "feature_gates.json"
 

@@ -20,7 +20,7 @@ from datetime import datetime, timedelta, timezone
 
 from chat.action_request_types._param_validation import reject_unknown_params
 from chat.action_request_types.base import ActionRequestHandler
-from db.models import ActionRequestType, ModelId
+from db.models import ActionRequestType
 
 logger = logging.getLogger(__name__)
 
@@ -44,8 +44,10 @@ _ALLOWED_PARAMS = frozenset({
 })
 
 
-def _known_models() -> set[str]:
-    return {e.value for e in ModelId}
+def _known_models() -> list[str]:
+    from chat.llm.config import list_model_specs
+
+    return [spec.id for spec in list_model_specs()]
 
 
 class RunUserSubagentHandler(ActionRequestHandler):
@@ -124,7 +126,9 @@ class RunUserSubagentHandler(ActionRequestHandler):
             if not isinstance(model, str) or not model.strip():
                 raise ValueError("model must be a non-empty string when provided")
             model = model.strip()
-            if model not in _known_models():
+            from chat.llm.config import resolve_model
+
+            if resolve_model(model) is None:
                 raise ValueError(
                     f"Unknown model: {model!r}. Valid models: "
                     f"{sorted(_known_models())}"

@@ -772,7 +772,11 @@ async def compact_conversation(
     from chat.gemini_api.constants import _SDK_HISTORY_FILENAME
     from chat.gemini_api.history import _load_sdk_history, _write_sdk_history_file
     from chat.gemini_api.session import remove_chat_session
-    from chat.llm.config import get_provider_for_model, get_provider_instance
+    from chat.llm.config import (
+        get_provider_for_model,
+        get_provider_instance,
+        model_instance_id,
+    )
     from chat.storage import ChatStorage, _publish_appended_to_bus
 
     loaded = _load_sdk_history(conversation_id)
@@ -792,7 +796,7 @@ async def compact_conversation(
             f"The saved history is for provider '{disk_provider}' but the "
             f"conversation's model '{model}' uses '{provider_name}'.",
         )
-    provider = get_provider_instance(provider_name)
+    provider = get_provider_instance(provider_name, model_instance_id(model))
 
     if provider.get_pending_tool_use_args_from_history(history):
         raise CompactionError(

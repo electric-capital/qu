@@ -129,10 +129,10 @@ def get_sub_agent_turn_limits(model: str) -> tuple[int, int]:
     warning at 15) because they fill their context much faster than 1M token
     models. Unknown models fall back to the large-model defaults (60/50).
     """
-    from chat.llm.config import MODEL_REGISTRY
+    from chat.llm.config import get_max_input_tokens
 
-    model_info = MODEL_REGISTRY.get(model)
-    if model_info and model_info.get("max_input_tokens", 0) <= 200_000:
+    max_input = get_max_input_tokens(model)
+    if 0 < max_input <= 200_000:
         return (20, 15)
     return (MAX_SUB_AGENT_TURNS, SUB_AGENT_TURN_WARNING_THRESHOLD)
 

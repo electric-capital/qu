@@ -48,7 +48,12 @@ from chat.gemini_api.turn_tools import (
     registry_key_for,
 )
 from chat.gemini_api.usage import UsageAccumulator
-from chat.llm.config import get_provider_for_model, get_provider_instance, get_backend_for_model
+from chat.llm.config import (
+    get_provider_for_model,
+    get_provider_instance,
+    get_backend_for_model,
+    model_instance_id,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -467,7 +472,7 @@ async def run_conversation_turn(
 
         # Resolve the LLM provider for this model
         provider_name = get_provider_for_model(model)
-        provider = get_provider_instance(provider_name)
+        provider = get_provider_instance(provider_name, model_instance_id(model))
 
         # Resolve per-conversation flags. ``nested_subagents`` lets 1st-level
         # sub-agents spawn one tier of 2nd-level sub-agents (Haiku / Flash-Lite

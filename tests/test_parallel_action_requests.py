@@ -108,7 +108,7 @@ def _make_provider(turns, pending=None):
 def _run_conversation(conv_mod, provider, *, message="hello"):
     import chat.llm.config as llm_config  # noqa: F401  (kept for parity)
     orig = conv_mod.get_provider_instance
-    conv_mod.get_provider_instance = lambda _n: provider  # type: ignore[assignment]
+    conv_mod.get_provider_instance = lambda _n, _i=None: provider  # type: ignore[assignment]
     events: list[dict] = []
 
     async def on_event(event: dict) -> None:
