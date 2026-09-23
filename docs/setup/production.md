@@ -19,7 +19,7 @@ Quest production deployment architecture: a single FastAPI server on port 8000 s
 ## Environment Constraints
 
 - Python 3.11+, Node.js 18+, Podman 4+ (script runner), uv
-- Single port: 8000 (all traffic)
+- Single port: 8000 (all traffic), plain HTTP -- put an HTTPS front in front of it; most OAuth providers reject non-HTTPS callback URLs (see Serving over HTTPS)
 - `QUEST_ENV=prod` (set automatically by `run.py --prod`): uses `quest_session` cookie, "Quest" branding, domain restriction enforced, dev login disabled
 - `data/` directory must exist and be writable by the server process. The data directory can be relocated by setting `data_dir` in `server_config.json` (see [Data Paths](../architecture/data-paths.md))
 - `data/secret_key` -- auto-generated cookie signing key. Restrict permissions (`chmod 600`). Losing this invalidates all sessions
@@ -248,19 +248,83 @@ The server process should be managed by systemd or supervisor. The relevant conf
 
 Both need `QUEST_ENV=prod` in the environment and should run `uv run uvicorn quest:app --host 0.0.0.0 --port 8000 --log-config logging_config.json` (no `--reload` in production).
 
-## Reverse Proxy
+## Serving over HTTPS
 
-A reverse proxy (Nginx or Caddy) is needed in production for HTTPS/TLS termination, gzip compression, and domain routing. Key requirements:
+Most OAuth providers refuse to register a plain `http://` redirect URI for anything other than
+`localhost`: Google, Slack, Microsoft 365 and Twitter/X all require `https://` callback URLs
+(GitHub is the notable exception). Since every browser-redirect OAuth flow (app login, Google
+Services, Ramp and each oauth-kind plugin) builds its callback from the same base URL, serve Quest
+over HTTPS in production -- it is also what protects the session cookie and lets the frontend use
+`wss://` for the persistent WebSocket.
+
+Two things to get right whichever route you pick:
+
+- **Set `app_base_url` to the HTTPS URL** (`server_config.json`, env `QUEST_APP_BASE_URL`; the
+  bootstrap wizard prompts for it). `oauth_base_url()` in `auth/config.py` uses it verbatim. Without
+  it, callbacks are built from the request's own scheme and host, which behind a TLS-terminating
+  front is plain `http://` on `localhost:8000` -- the provider then rejects the mismatch.
+- **Register the callbacks under that URL** with each provider: `<app_base_url>/auth/callback` and
+  `<app_base_url>/auth/google-services/callback` for Google (both required), plus
+  `<app_base_url>/auth/<service>/callback` for each connector you configure (see the per-service
+  setup guides). Callbacks are browser redirects, so the HTTPS URL only has to be reachable from
+  your users' browsers, never from the provider's servers -- a private Tailscale hostname works.
+
+The easiest ways to get HTTPS are Tailscale Serve (private to your tailnet) and a Cloudflare Tunnel
+behind Zero Trust Access (public hostname, no open inbound ports). Neither needs a public IP, a DNS
+record you manage, or certificate renewal. A classic reverse proxy is the third option. In every case
+uvicorn keeps listening on plain HTTP port 8000 and the front terminates TLS; firewall 8000 so only
+the front (running on the same host) can reach it.
+
+### Tailscale Serve
+
+Best when everyone who uses the instance can join your tailnet. The URL is only resolvable and
+reachable from tailnet devices, which doubles as the access control.
+
+1. Install Tailscale on the server and on each user's device, and in the Tailscale admin console
+   enable **MagicDNS** and **HTTPS Certificates** (DNS page). This gives the machine a stable
+   `<machine>.<tailnet>.ts.net` name and lets it fetch a Let's Encrypt certificate for it.
+2. On the server run `tailscale serve --bg 8000`. Tailscale terminates TLS on port 443 of the
+   machine's tailnet address, provisions the certificate on first request, proxies to
+   `localhost:8000` and passes WebSockets through. The setting persists across reboots;
+   `tailscale serve status` shows the URL and `tailscale serve reset` removes it.
+3. Set `app_base_url` to `https://<machine>.<tailnet>.ts.net` (no port) and register the callback
+   URLs under it with the OAuth providers. A localhost callback can stay registered alongside it for
+   development.
+
+`tailscale funnel` would expose the same endpoint to the public internet; it is not needed for
+OAuth, since the callback is a browser redirect.
+
+### Cloudflare Tunnel with Zero Trust Access
+
+Best when users are outside your network or you want a hostname on your own domain. Requires a
+domain whose DNS is on Cloudflare (the free plan is enough). `cloudflared` on the server opens an
+outbound-only connection to Cloudflare, so no inbound port is opened and Cloudflare serves the
+certificate.
+
+1. In the Cloudflare Zero Trust dashboard go to **Networks > Tunnels**, create a tunnel with the
+   *Cloudflared* connector and run the install command it shows on the Quest server
+   (`cloudflared service install <token>` -- it registers a systemd service that starts on boot).
+2. Under the tunnel's **Public Hostname** tab add the hostname (e.g. `quest.yourdomain.com`) with
+   service type `HTTP` and URL `localhost:8000`. Cloudflare creates the DNS record; WebSockets pass
+   through unchanged.
+3. Under **Access > Applications** add a *Self-hosted* application for that hostname with an Allow
+   policy such as "Emails ending in `@yourdomain.com`" (or a specific list). Without this the
+   hostname is reachable by anyone on the internet -- Quest still enforces its own Google login, but
+   the Access layer keeps unauthenticated traffic off the server entirely. Users get a one-time
+   Cloudflare login (Google or email code) before Quest's sign-in screen.
+4. Set `app_base_url` to `https://quest.yourdomain.com` and register the callback URLs under it.
+
+Caveat: the Cloudflare proxy caps a single request body at 100 MB on free/pro plans, below the
+composer's 200 MB per-file attachment limit.
+
+### Reverse proxy (Nginx or Caddy)
+
+For a server with a public IP and your own certificates (Caddy obtains them automatically). Key
+requirements:
 - WebSocket support: must proxy `Upgrade` and `Connection` headers (Caddy handles this automatically)
-- Read timeout: at least 5 minutes (`proxy_read_timeout 300s` in Nginx) for long-running Gemini responses
+- Read timeout: at least 5 minutes (`proxy_read_timeout 300s` in Nginx) for long-running model responses
 - Client body size: increase from default for file uploads (`client_max_body_size 250M` in Nginx)
-- HTTPS required: protects session cookies, prevents MITM, required for secure WebSocket (wss://)
-
-Update `google_oauth.web.redirect_uris` in `server_credentials.json` to use HTTPS production URLs.
-
-## Tailscale Deployment
-
-Quest can be accessed over Tailscale by binding to `0.0.0.0:8000` and adding the Tailscale hostname callback URL (`http://your-machine.tail1234.ts.net:8000/auth/callback`) to the Google OAuth redirect URIs in Google Cloud Console. Both localhost and Tailscale callback URLs can coexist. Get the Tailscale hostname from `tailscale status`. Set the Tailscale URL as `app_base_url` in `server_config.json` so app-generated links (e.g. Slack attribution) and OAuth callbacks use it.
+- HTTPS only: redirect port 80 to 443; set `app_base_url` to the `https://` URL as above
 
 ## Logging
 
@@ -274,7 +338,7 @@ All log output uses a unified format configured in `chat/logging_config.py` (dic
 - The encryption password: keep it out of the unit file and shell history (`QUEST_ENCRYPTION_PASSWORD_FILE` pointing at a root-only file); losing it makes every stored credential unrecoverable. Rotate with `uv run python -m config.encryption rotate-password`
 - `data/quest.db.pre-encryption-*.bak`: the plaintext copy written by the encryption migration -- delete it once the upgrade is verified
 - `server_credentials.json`: never commit to version control (in `.gitignore`)
-- Firewall: only expose ports 80/443 through reverse proxy; block direct access to 8000
+- Firewall: expose only the HTTPS front (Tailscale Serve, `cloudflared`, or ports 80/443 on a reverse proxy); block direct access to 8000 from anything but that front on the same host (see Serving over HTTPS)
 - Script-runner Podman containers run ephemerally with `--rm` and workspace volume mounts (see [Script Runner](../architecture/script-runner.md))
 
 ## Backup
