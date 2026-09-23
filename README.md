@@ -9,6 +9,9 @@ already use (email, documents, Slack, finance tools) and put LLM agents to work 
 designed so that doing this with **sensitive data** is safe by default, and usable by people who
 are not engineers.
 
+See more on our [post](https://electriccapital.substack.com/p/open-sourcing-quest?r=1acoy&utm_campaign=post-expanded-share&utm_medium=web)
+about why we decided to build our own harness.
+
 ## Overview
 
 Quest runs agentic conversations against multiple LLM providers and gives the agent carefully
