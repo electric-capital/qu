@@ -272,24 +272,64 @@
   color: #fbbf24;
 }
 
-/* Destructive per-instance action, tucked under the save row */
-.inf-prov-danger-btn {
-  margin-top: 0.75rem;
-  font-size: 0.75rem;
-  padding: 0.25rem 0.625rem;
+/* Three-dot header menu on instance cards (holds the destructive action) */
+.inf-prov-kebab {
+  position: relative;
+}
+
+.inf-prov-kebab-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem;
+  border: none;
   border-radius: 4px;
-  border: 1px solid var(--border-strong);
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
 }
 
-.inf-prov-danger-btn:hover:not(:disabled) {
-  border-color: #f87171;
+.inf-prov-kebab-btn:hover,
+.inf-prov-kebab-btn[aria-expanded="true"] {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.inf-prov-kebab-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 10;
+  min-width: 12rem;
+  margin-top: 0.25rem;
+  padding: 0.25rem;
+  background: var(--surface-overlay);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  box-shadow: var(--shadow-card);
+}
+
+.inf-prov-kebab-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font-size: 0.8125rem;
+  padding: 0.375rem 0.625rem;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.inf-prov-kebab-item:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.inf-prov-kebab-item.danger {
   color: #f87171;
 }
 
-.inf-prov-danger-btn:disabled {
+.inf-prov-kebab-item:disabled {
   opacity: 0.5;
   cursor: default;
 }
@@ -384,12 +424,8 @@
   }
 
   .inf-prov-model-remove-btn:hover:not(:disabled),
-  .inf-prov-danger-btn:hover:not(:disabled) {
+  .inf-prov-kebab-item.danger {
     color: #dc2626;
-  }
-
-  .inf-prov-danger-btn:hover:not(:disabled) {
-    border-color: #dc2626;
   }
 
   .inf-prov-typeahead-warning {

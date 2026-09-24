@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Loader2, Plus, X } from 'lucide-react';
+import { Loader2, MoreVertical, Plus, X } from 'lucide-react';
 import {
   createInferenceInstance,
   deleteInferenceInstance,
@@ -587,6 +587,63 @@ function AddModelCombobox({
 // Provider-instance card (one OpenRouter configuration)
 // ---------------------------------------------------------------------------
 
+/** Three-dot header menu holding the card's destructive action. */
+function CardMenu({ items }: { items: { label: string; onClick: () => void; disabled?: boolean; danger?: boolean }[] }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (event: MouseEvent) => {
+      if (ref.current && !ref.current.contains(event.target as Node)) setOpen(false);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  return (
+    <div className="inf-prov-kebab" ref={ref}>
+      <button
+        type="button"
+        className="inf-prov-kebab-btn"
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label="More actions"
+        title="More actions"
+      >
+        <MoreVertical size={16} />
+      </button>
+      {open && (
+        <div className="inf-prov-kebab-menu" role="menu">
+          {items.map((item) => (
+            <button
+              type="button"
+              key={item.label}
+              role="menuitem"
+              className={`inf-prov-kebab-item${item.danger ? ' danger' : ''}`}
+              disabled={item.disabled}
+              onClick={() => {
+                setOpen(false);
+                item.onClick();
+              }}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function InstanceCard({
   status: initial,
   onDeleted,
@@ -685,6 +742,17 @@ function InstanceCard({
       loading={false}
       loadError=""
       detail={{ label: `${status.label} · ${status.kind_label}`, configured: status.configured, source: status.source }}
+      hideBadge
+      headerAction={
+        <CardMenu
+          items={[{
+            label: deleting ? 'Removing…' : 'Remove configuration',
+            onClick: handleDelete,
+            disabled: deleting,
+            danger: true,
+          }]}
+        />
+      }
     >
       <div className="inf-prov-columns">
         <div className="inf-prov-main">
@@ -713,13 +781,6 @@ function InstanceCard({
             disabled={!apiKey.trim() && !labelDirty}
             onSave={handleSave}
           />
-          <button
-            className="inf-prov-danger-btn"
-            onClick={handleDelete}
-            disabled={deleting}
-          >
-            {deleting ? 'Removing…' : 'Remove configuration'}
-          </button>
         </div>
         <ModelsPanel
           groups={[{ title: null, configured: status.configured, models: status.models }]}
