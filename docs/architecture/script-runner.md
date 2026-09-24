@@ -69,7 +69,7 @@ The container uses slirp4netns networking with socat forwarding and iptables-bas
 - Scripts can reach the sandbox tool API via `localhost:<port>` (the port is injected as `QUEST_PORT`; it resolves via `get_sandbox_port()` in `chat/gemini_api/constants.py` -- `QUEST_SANDBOX_PORT` env var, defaulting to the main server port + 1, e.g. 9501 for a checkout on 9500)
 - No external internet access is available -- all outbound traffic is blocked
 - The socat forwarding bridges the container's localhost to the host's sandbox tool API port (10.0.2.2 in slirp4netns; the sandbox server binds `127.0.0.1` so it is never exposed on the LAN)
-- iptables rules restrict host access to only the sandbox tool API port on the slirp gateway (`10.0.2.2:<port>`) and REJECT every private + link-local range (`10/8`, `172.16/12`, `192.168/16`, `169.254/16`, `100.64/10`); this is deliberately broad because the host is also reachable at its *real* LAN IP (surfaced as `host.containers.internal` in the container's `/etc/hosts`), which `outbound_addr=127.0.0.1` does NOT block -- so without the range REJECTs the container could reach the main Quest server, SSHd, and the cloud metadata endpoint on that address. The entrypoint fails closed (refuses to start) if `iptables` or `ip6tables` is unavailable
+- iptables rules restrict host access to only the sandbox tool API port on the slirp gateway (`10.0.2.2:<port>`) and REJECT every private + link-local range (`10/8`, `172.16/12`, `192.168/16`, `169.254/16`, `100.64/10`); this is deliberately broad because the host is also reachable at its *real* LAN IP (surfaced as `host.containers.internal` in the container's `/etc/hosts`), which `outbound_addr=127.0.0.1` does NOT block -- so without the range REJECTs the container could reach the main Quest server, SSHd, and the cloud metadata endpoint on that address. The IPv4 rules are loaded by one atomic `iptables-restore` call (one process start instead of one per rule; all-or-nothing), and the entrypoint fails closed (refuses to start) if `iptables-restore` or `ip6tables` is unavailable or either policy fails to install
 - IPv6 is disabled outright in both profiles:
   - `enable_ipv6=false` on the slirp4netns network option (slirp enables it by default, handing the container a ULA address, a default route, and the host's loopback at `fd00::2`),
   - `--sysctl net.ipv6.conf.all.disable_ipv6=1` (no IPv6 stack in the container's network namespace, so `AF_INET6` connects fail with `EADDRNOTAVAIL`), and
@@ -95,6 +95,14 @@ The container uses slirp4netns networking with socat forwarding and iptables-bas
   The quest.py lifespan additionally sweeps `data/chats/` + `data/projects/` at boot and deletes any symlink that predates this fix (`chat/workspace_symlinks.py`), and the host-side consumers keep their own symlink guards as defense in depth (see [File Browser API](../api/file-browser-api.md#endpoints)).
 
   Known cost: anything inside the sandbox that needs to *create* a symlink fails -- e.g. `python -m venv` (even with `--copies`, which still symlinks `lib64`) and git checkouts containing symlink entries in the public profile; plain `pip install --target` still works
+
+## Startup Cost
+
+Every `run_script`/`run_python` call pays a full container create + teardown, so per-call overhead is kept low in three places:
+
+- **OCI runtime**: `chat/gemini_api/sandbox_runtime.py` picks the runtime once per process and `_build_script_podman_cmd()` passes it as podman's global `--runtime` flag. crun (much cheaper create/delete than runc: ~320 ms vs ~570 ms per restricted-profile run on a 4-vCPU Debian host) is used when found on `PATH` and `crun --version` succeeds; otherwise the flag is omitted and podman's default runtime applies. `QUEST_SANDBOX_RUNTIME` overrides detection: a runtime name or binary path is passed through verbatim, `default` omits the flag. The choice is logged at startup (`Sandbox OCI runtime: ...`). The confinement (seccomp profile, network, entrypoint iptables, setpriv) is applied by podman and the entrypoint, not the runtime, so both runtimes enforce the same profile. On Debian: `apt install crun`.
+- **Entrypoint**: IPv4 rules go in via a single `iptables-restore` (see [Networking](#networking)).
+- **matplotlib font cache**: both images set `MPLCONFIGDIR=/opt/matplotlib` and pre-build the font cache at image build time (world-writable, since matplotlib falls back to a temp dir -- and rebuilds -- when the directory is not writable by the run user). Without it the fresh `HOME=/tmp` made every matplotlib import rebuild `fontlist.json` (~1 s).
 
 ## Auto-Build
 

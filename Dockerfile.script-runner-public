@@ -12,6 +12,14 @@ RUN pip install --no-cache-dir requests httpx beautifulsoup4 lxml openpyxl pytho
 
 ENV MPLBACKEND=Agg
 
+# Pre-build matplotlib's font cache at image build time. Containers run with
+# a fresh HOME=/tmp, so without this every run that imports matplotlib
+# rebuilds fontlist.json from scratch (~1.2s). The directory must stay
+# writable: matplotlib falls back to a throwaway temp dir (and rebuilds)
+# when MPLCONFIGDIR is not writable by the unprivileged run user.
+ENV MPLCONFIGDIR=/opt/matplotlib
+RUN python3 -c "import matplotlib.pyplot" && chmod -R a+rwX /opt/matplotlib
+
 # Entrypoint script that opens internet egress while REJECTing all private /
 # link-local destinations (LAN, cloud metadata service), then drops
 # privileges. No socat proxy bridge: public containers have no path -- and

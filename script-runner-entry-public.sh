@@ -25,7 +25,7 @@
 RUN_UID="${QUEST_RUN_UID:-1000}"
 RUN_GID="${QUEST_RUN_GID:-1000}"
 
-if command -v iptables >/dev/null 2>&1 && command -v ip6tables >/dev/null 2>&1; then
+if command -v iptables-restore >/dev/null 2>&1 && command -v ip6tables >/dev/null 2>&1; then
     # IPv6: launched with slirp4netns enable_ipv6=false and
     # net.ipv6.conf.all.disable_ipv6=1, so there should be no IPv6 stack at
     # all. Belt and braces -- every REJECT below is IPv4-only, and IPv6
@@ -36,18 +36,31 @@ if command -v iptables >/dev/null 2>&1 && command -v ip6tables >/dev/null 2>&1; 
         exit 1
     fi
     # DNS: slirp4netns serves DNS from 10.0.2.3 (inside 10.0.0.0/8, so it
-    # must be allowed explicitly before the private-range rejects).
-    iptables -A OUTPUT -d 10.0.2.3 -p udp --dport 53 -j ACCEPT
-    iptables -A OUTPUT -d 10.0.2.3 -p tcp --dport 53 -j ACCEPT
-    # Block every private, link-local, and special-use destination. The
+    # must be allowed explicitly before the private-range rejects). Then
+    # block every private, link-local, and special-use destination. The
     # slirp gateway (10.0.2.2) is covered by 10.0.0.0/8: it remains usable
     # as the routing next hop (these rules match destinations), but is not
     # addressable as a destination itself.
-    iptables -A OUTPUT -d 10.0.0.0/8 -j REJECT
-    iptables -A OUTPUT -d 172.16.0.0/12 -j REJECT
-    iptables -A OUTPUT -d 192.168.0.0/16 -j REJECT
-    iptables -A OUTPUT -d 169.254.0.0/16 -j REJECT
-    iptables -A OUTPUT -d 100.64.0.0/10 -j REJECT
+    #
+    # Loaded in ONE iptables-restore call (one process start instead of one
+    # per rule, on the critical path of every sandbox run). The restore
+    # commits atomically, so the policy is all-or-nothing and a failure
+    # fails closed.
+    if ! iptables-restore <<EOF
+*filter
+-A OUTPUT -d 10.0.2.3/32 -p udp -m udp --dport 53 -j ACCEPT
+-A OUTPUT -d 10.0.2.3/32 -p tcp -m tcp --dport 53 -j ACCEPT
+-A OUTPUT -d 10.0.0.0/8 -j REJECT
+-A OUTPUT -d 172.16.0.0/12 -j REJECT
+-A OUTPUT -d 192.168.0.0/16 -j REJECT
+-A OUTPUT -d 169.254.0.0/16 -j REJECT
+-A OUTPUT -d 100.64.0.0/10 -j REJECT
+COMMIT
+EOF
+    then
+        echo "public sandbox: failed to install IPv4 egress policy, refusing to start" >&2
+        exit 1
+    fi
 else
     # Refuse to run with open egress and no filtering.
     echo "public sandbox: iptables/ip6tables unavailable, refusing to start" >&2

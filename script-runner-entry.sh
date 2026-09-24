@@ -8,7 +8,7 @@
 #
 # Steps:
 #   1. Start socat forwarder (localhost:<port> -> 10.0.2.2:<port>)
-#   2. Set iptables rules to allow ONLY the sandbox tool-API port on the
+#   2. Load iptables rules (one atomic iptables-restore) allowing ONLY the sandbox tool-API port on the
 #      slirp gateway, and REJECT every other private / link-local
 #      destination; REJECT all IPv6 (fail closed if iptables/ip6tables
 #      are unavailable)
@@ -37,7 +37,7 @@ sleep 0.05
 # Quest server, SSHd, the cloud metadata endpoint) answers. A rule that only
 # names 10.0.2.2 leaves all of those wide open. So we ACCEPT the one allowed
 # gateway:port and then REJECT every private + link-local range outright.
-if ! command -v iptables >/dev/null 2>&1 || ! command -v ip6tables >/dev/null 2>&1; then
+if ! command -v iptables-restore >/dev/null 2>&1 || ! command -v ip6tables >/dev/null 2>&1; then
     echo "restricted sandbox: iptables/ip6tables unavailable, refusing to start" >&2
     exit 1
 fi
@@ -52,17 +52,28 @@ if ! ip6tables -A OUTPUT -j REJECT; then
     exit 1
 fi
 
-# The single allowed channel: the sandbox tool-API port on the gateway.
-iptables -A OUTPUT -d 10.0.2.2 -p tcp --dport "${PORT}" -j ACCEPT
-
-# Reject the host and the rest of the LAN. 10.0.0.0/8 covers the slirp
-# gateway (10.0.2.2) too, so anything not matched by the ACCEPT above is
-# denied. 169.254.0.0/16 covers cloud metadata (e.g. 169.254.169.254).
-iptables -A OUTPUT -d 10.0.0.0/8 -j REJECT
-iptables -A OUTPUT -d 172.16.0.0/12 -j REJECT
-iptables -A OUTPUT -d 192.168.0.0/16 -j REJECT
-iptables -A OUTPUT -d 169.254.0.0/16 -j REJECT
-iptables -A OUTPUT -d 100.64.0.0/10 -j REJECT
+# The single allowed channel: the sandbox tool-API port on the gateway,
+# then reject the host and the rest of the LAN. 10.0.0.0/8 covers the slirp
+# gateway (10.0.2.2) too, so anything not matched by the ACCEPT is denied.
+# 169.254.0.0/16 covers cloud metadata (e.g. 169.254.169.254).
+#
+# Loaded in ONE iptables-restore call (one process start instead of one per
+# rule, on the critical path of every sandbox run). The restore commits
+# atomically, so the policy is all-or-nothing and a failure fails closed.
+if ! iptables-restore <<EOF
+*filter
+-A OUTPUT -d 10.0.2.2/32 -p tcp -m tcp --dport ${PORT} -j ACCEPT
+-A OUTPUT -d 10.0.0.0/8 -j REJECT
+-A OUTPUT -d 172.16.0.0/12 -j REJECT
+-A OUTPUT -d 192.168.0.0/16 -j REJECT
+-A OUTPUT -d 169.254.0.0/16 -j REJECT
+-A OUTPUT -d 100.64.0.0/10 -j REJECT
+COMMIT
+EOF
+then
+    echo "restricted sandbox: failed to install IPv4 egress policy, refusing to start" >&2
+    exit 1
+fi
 
 # Remove execute permission from iptables binaries so the user's script
 # cannot call them even if capabilities were somehow retained.

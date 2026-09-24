@@ -257,6 +257,17 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.exception("Workspace symlink scrub failed; continuing")
 
+    # Resolve (and log) the sandbox OCI runtime up front so the first
+    # run_script/run_python call doesn't pay the crun probe.
+    from chat.gemini_api.sandbox_runtime import describe_sandbox_runtime
+    try:
+        logger.info(
+            "Sandbox OCI runtime: %s",
+            await asyncio.to_thread(describe_sandbox_runtime),
+        )
+    except Exception:
+        logger.exception("Sandbox runtime detection failed; continuing")
+
     # Start the replay-buffer idle eviction sweep.
     from chat.realtime.replay_buffer import eviction_loop
     eviction_task = asyncio.create_task(eviction_loop())

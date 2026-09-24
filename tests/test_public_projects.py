@@ -99,7 +99,10 @@ class TestBuildScriptPodmanCmd:
             assert "enable_ipv6=false" in network.split(":", 1)[1].split(",")
             assert "--sysctl=net.ipv6.conf.all.disable_ipv6=1" in cmd
 
-    def test_interactive_flag(self):
+    def test_interactive_flag(self, monkeypatch):
+        import chat.gemini_api.tool_handlers.sandbox as sandbox
+
+        monkeypatch.setattr(sandbox, "get_sandbox_runtime", lambda: None)
         cmd = _build_script_podman_cmd("/ws", ["python3", "-u", "-"], "k", interactive=True)
         assert cmd[:4] == ["podman", "run", "--rm", "-i"]
         cmd = _build_script_podman_cmd("/ws", ["python3"], "k")
