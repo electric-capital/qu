@@ -576,9 +576,6 @@
   white-space: nowrap;
 }
 
-.model-menu-item-cost {
-  color: rgba(255, 255, 255, 0.45);
-}
 
 .model-menu-item-sub {
   font-size: 0.7rem;
@@ -786,9 +783,6 @@
     color: rgba(0, 0, 0, 0.87);
   }
 
-  .model-menu-item-cost {
-    color: rgba(0, 0, 0, 0.45);
-  }
 
   .model-menu-item-sub {
     color: rgba(0, 0, 0, 0.5);

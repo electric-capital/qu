@@ -15,7 +15,21 @@ export interface ModelInfo {
    * `deprecated` flag in MODEL_REGISTRY (chat/llm/config.py).
    */
   deprecated?: boolean;
+  /**
+   * Admin Model Selection (Settings > Model Selection, persisted server-side
+   * in data/model_selection.json and delivered on every catalog entry of
+   * GET /app/api/config): the composer menu's top-level slot (null = only
+   * listed under "All models"), the label shown for a slotted model, and
+   * whether the model may be used in private / public-project conversations.
+   */
+  slot: number | null;
+  descriptor: string;
+  allowPrivate: boolean;
+  allowPublic: boolean;
 }
+
+/** Conversation visibility a model list is being offered for. */
+export type ModelVisibility = 'private' | 'public';
 
 /**
  * Pre-config-load fallback catalog: the fixed Vertex models, hand-mirrored
@@ -25,7 +39,9 @@ export interface ModelInfo {
  * and replaces this list via setModelCatalog(); nothing else should read
  * BUILTIN_MODELS directly.
  */
-const BUILTIN_MODELS: ModelInfo[] = [
+const UNSET_SELECTION = { slot: null, descriptor: '', allowPrivate: true, allowPublic: true };
+
+const BUILTIN_MODELS: ModelInfo[] = ([
   { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro', provider: 'gemini', providerLabel: 'Gemini on Vertex', maxInputTokens: 1_000_000, deprecated: true },
   { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash', provider: 'gemini', providerLabel: 'Gemini on Vertex', maxInputTokens: 1_000_000, deprecated: true },
   { id: 'gemini-3.1-flash-lite-preview', name: 'Gemini 3.1 Flash-Lite', provider: 'gemini', providerLabel: 'Gemini on Vertex', maxInputTokens: 1_000_000, deprecated: true },
@@ -42,7 +58,16 @@ const BUILTIN_MODELS: ModelInfo[] = [
   { id: 'claude-opus-4-8', name: 'Claude Opus 4.8', provider: 'anthropic', providerLabel: 'Claude on Vertex', maxInputTokens: 1_000_000 },
   { id: 'claude-opus-5', name: 'Claude Opus 5', provider: 'anthropic', providerLabel: 'Claude on Vertex', maxInputTokens: 1_000_000 },
   { id: 'claude-opus-5-5', name: 'Claude Opus 5.5', provider: 'anthropic', providerLabel: 'Claude on Vertex', maxInputTokens: 1_000_000 },
-];
+] as Omit<ModelInfo, keyof typeof UNSET_SELECTION>[]).map((m) => ({
+  ...m,
+  ...UNSET_SELECTION,
+  // The server's absent-file defaults (DEFAULT_MODEL_SELECTION in
+  // config/model_selection.py), so the pre-config paint matches.
+  ...(m.id === 'claude-opus-4-8' ? { slot: 1, descriptor: 'Smart ($$$)' }
+    : m.id === 'claude-sonnet-5' ? { slot: 2, descriptor: 'Faster ($$)' }
+    : m.id === 'gemini-3.8-flash' ? { slot: 3, descriptor: 'Fastest ($)' }
+    : {}),
+}));
 
 const VERTEX_PROVIDERS = new Set(['gemini', 'anthropic']);
 
@@ -71,6 +96,10 @@ export function setModelCatalog(models: AppModelInfo[] | undefined | null): void
       providerLabel: m.provider_label || m.provider,
       maxInputTokens: m.max_input_tokens || 0,
       deprecated: m.deprecated === true,
+      slot: typeof m.slot === 'number' ? m.slot : null,
+      descriptor: typeof m.descriptor === 'string' ? m.descriptor : '',
+      allowPrivate: m.allow_private !== false,
+      allowPublic: m.allow_public !== false,
     });
   }
   if (next.length > 0) catalog = next;
@@ -85,32 +114,41 @@ export function getKnownModels(): ModelInfo[] {
   return catalog;
 }
 
+/** Whether the admin allows a model in conversations of this visibility. */
+export function isModelAllowedFor(model: ModelInfo, visibility: ModelVisibility): boolean {
+  return visibility === 'public' ? model.allowPublic : model.allowPrivate;
+}
+
 /**
- * Models offerable for new selection: everything known except deprecated
- * entries. Callers still intersect with the server's `available_models`
- * (credentialed, enabled, healthy) before offering them.
+ * Models offerable for new selection in a conversation of the given
+ * visibility: everything known except deprecated entries and models the
+ * admin has unticked for that visibility (Settings > Model Selection).
+ * Defaults to private, which covers every picker outside a public project
+ * (composer, routines, Slack default). Callers still intersect with the
+ * server's `available_models` (credentialed, enabled, healthy) before
+ * offering them.
  */
-export function getSelectableModels(): ModelInfo[] {
-  return catalog.filter((m) => !m.deprecated);
+export function getSelectableModels(visibility: ModelVisibility = 'private'): ModelInfo[] {
+  return catalog.filter((m) => !m.deprecated && isModelAllowedFor(m, visibility));
+}
+
+/**
+ * The admin's top-level composer menu picks (models with a slot), in slot
+ * order. The menu shows each one's descriptor (or its name when the
+ * descriptor is empty) with the model name as the sublabel; the full list
+ * lives behind the "All models" submenu. Entries whose model is not
+ * offerable in the current context are hidden by the menu, not disabled.
+ */
+export function getTopLevelModels(): ModelInfo[] {
+  return catalog
+    .filter((m) => !m.deprecated && m.slot !== null)
+    .sort((a, b) => (a.slot as number) - (b.slot as number));
 }
 
 /** Catalog entry for a model id, if known. */
 export function getModelInfo(modelId: string): ModelInfo | undefined {
   return catalog.find((m) => m.id === modelId);
 }
-
-/**
- * Curated picks surfaced at the top level of the composer model menu, in
- * display order. Each maps a user-friendly speed/cost tier to a concrete
- * model; the full selectable list lives behind the "All models" submenu.
- * Entries whose model is not credentialed (or filtered out by the
- * conversation's provider lock) are hidden by the menu, not disabled.
- */
-export const RECOMMENDED_MODELS: { modelId: string; label: string; cost: string }[] = [
-  { modelId: 'claude-opus-4-8', label: 'Smart', cost: '$$$' },
-  { modelId: 'claude-sonnet-5', label: 'Faster', cost: '$$' },
-  { modelId: 'gemini-3.8-flash', label: 'Fastest', cost: '$' },
-];
 
 /**
  * Fallback default conversation model when the per-user server-side default

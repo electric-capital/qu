@@ -39,7 +39,11 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import type { ComposerAttachmentRef } from '../api/types';
 import { uploadComposerAttachments } from '../api/fileApi';
 import { extractFilesFromDataTransfer } from '../utils/directoryTraversal';
-import { getKnownModels, getSelectableModels, getProviderForModel, getModelDisplayName } from '../constants/models';
+import {
+  getKnownModels, getSelectableModels, getProviderForModel, getModelDisplayName, getModelInfo,
+  isModelAllowedFor,
+} from '../constants/models';
+import type { ModelVisibility } from '../constants/models';
 import { getVisibleFlags, getFlagLabel } from '../constants/flags';
 import { getFileIconInfo } from '../utils/fileIcons';
 import { ContextIndicator } from './ContextIndicator';
@@ -288,15 +292,24 @@ export function Composer({
 
   // Models whose backend credentials are configured server-side. null means
   // the config fetch hasn't resolved yet -- treat as "all available".
-  // Deprecated models are excluded here (not offered for selection); a
-  // conversation already on one keeps it via ModelSelector's
+  // Deprecated models and models the admin has not allowed for this
+  // conversation's visibility (Settings > Model Selection: private vs
+  // public-project conversations) are excluded here (not offered for
+  // selection); a conversation already on one keeps it via ModelSelector's
   // current-selection fallback.
+  const modelVisibility: ModelVisibility = isPublicProject ? 'public' : 'private';
   const credentialedModels = availableModelIds === null
-    ? getSelectableModels()
-    : getSelectableModels().filter((m) => availableModelIds.includes(m.id));
+    ? getSelectableModels(modelVisibility)
+    : getSelectableModels(modelVisibility).filter((m) => availableModelIds.includes(m.id));
   const noModelsAvailable = availableModelIds !== null && availableModelIds.length === 0;
 
   const selectedModel = getModelForConversation(conversationId);
+  // A known model the admin has unticked for this visibility cannot be sent
+  // with (the server refuses the turn too); the menu keeps it visible with a
+  // "(not allowed here)" suffix so the user can switch away.
+  const selectedModelInfo = getModelInfo(selectedModel);
+  const selectedModelDisallowed = selectedModelInfo !== undefined
+    && !isModelAllowedFor(selectedModelInfo, modelVisibility);
   const queuedSkills = getQueuedSkillsForConversation(conversationId);
   const loadedSkills = getLoadedSkillsForConversation(conversationId);
 
@@ -787,7 +800,8 @@ export function Composer({
     (!inputValue.trim() && pendingAttachments.length === 0)
     || inputDisabled
     || isUploadingAttachments
-    || noModelsAvailable;
+    || noModelsAvailable
+    || selectedModelDisallowed;
 
   // Persistent public-project reminder above the input. Public conversations
   // run in an internet-enabled sandbox where the model may submit content to
@@ -1032,6 +1046,7 @@ export function Composer({
         models={selectableModels}
         onSelect={handleModelSelect}
         disabled={inputDisabled}
+        visibility={modelVisibility}
       />
       {noModelsAvailable && (
         <span

@@ -826,6 +826,141 @@ async def admin_update_feature_gate(
 
 
 # ---------------------------------------------------------------------------
+# Model selection (Settings > Model Selection)
+# ---------------------------------------------------------------------------
+
+
+def _model_selection_view() -> dict:
+    """The Model Selection table: one row per enabled, non-deprecated model
+    (Vertex registry order, then each instance's models) with its selection
+    entry and whether it is currently offerable (credentials configured and
+    no failing health verdict -- the same filter as ``available_models``).
+
+    Rows are the models an admin can meaningfully curate; entries stored
+    for models that are currently disabled or removed stay in the file
+    untouched by reads but are dropped by the next full-replacement PUT.
+    """
+    from chat.llm.config import get_available_models, get_configured_models, list_model_specs
+    from config.model_selection import (
+        MAX_DESCRIPTOR_LENGTH,
+        MAX_TOP_LEVEL_SLOTS,
+        read_model_selection,
+        selection_for,
+    )
+
+    selection = read_model_selection()
+    configured = set(get_configured_models())
+    available = set(get_available_models())
+    rows = []
+    for spec in list_model_specs():
+        if spec.deprecated or not spec.enabled:
+            continue
+        if spec.id in available:
+            unavailable_reason = None
+        elif spec.id in configured:
+            unavailable_reason = "failing"
+        else:
+            unavailable_reason = "not_configured"
+        rows.append({
+            "id": spec.id,
+            "wire_id": spec.wire_id,
+            "display_name": spec.display_name,
+            "provider_label": spec.provider_label,
+            "instance_id": spec.instance_id,
+            "available": unavailable_reason is None,
+            "unavailable_reason": unavailable_reason,
+            **selection_for(spec.id, selection),
+        })
+    return {
+        "max_slots": MAX_TOP_LEVEL_SLOTS,
+        "max_descriptor_length": MAX_DESCRIPTOR_LENGTH,
+        "models": rows,
+    }
+
+
+@router.get("/admin/model-selection")
+async def admin_get_model_selection(
+    user: dict = Depends(get_current_user_cookie_or_apikey_checked),
+):
+    """The per-model selection settings (top-level slot, descriptor,
+    private/public usage flags) for every enabled model."""
+    _require_admin(user)
+    return _model_selection_view()
+
+
+class ModelSelectionEntry(BaseModel):
+    id: str
+    slot: Optional[int] = None
+    descriptor: str = ""
+    allow_private: bool = True
+    allow_public: bool = True
+
+
+class ModelSelectionUpdate(BaseModel):
+    # Full replacement: every listed model gets exactly these settings and
+    # models not listed are reset to unset (no slot, allowed everywhere).
+    models: list[ModelSelectionEntry]
+
+
+@router.put("/admin/model-selection")
+async def admin_update_model_selection(
+    body: ModelSelectionUpdate,
+    user: dict = Depends(get_current_user_cookie_or_apikey_checked),
+):
+    """Replace the whole model selection (persisted in data/model_selection.json).
+
+    Rejects unknown model ids, slots outside ``1..max_slots``, descriptors
+    over the length cap, and duplicate slots (400). Takes effect on the next
+    GET /app/api/config fetch and the next conversation turn.
+    """
+    _require_admin(user)
+    from chat.llm.config import resolve_model
+    from config.model_selection import (
+        MAX_DESCRIPTOR_LENGTH,
+        MAX_TOP_LEVEL_SLOTS,
+        save_model_selection,
+    )
+
+    def _bad(message: str) -> HTTPException:
+        return HTTPException(
+            status_code=400, detail={"error": "invalid_params", "message": message},
+        )
+
+    entries: dict[str, dict] = {}
+    for entry in body.models:
+        if entry.id in entries:
+            raise _bad(f"Model listed twice: {entry.id}")
+        if resolve_model(entry.id) is None:
+            raise HTTPException(
+                status_code=400,
+                detail={"error": "unknown_model", "message": f"Unknown model: {entry.id}"},
+            )
+        if entry.slot is not None and not 1 <= entry.slot <= MAX_TOP_LEVEL_SLOTS:
+            raise _bad(f"Slot must be between 1 and {MAX_TOP_LEVEL_SLOTS}: {entry.id}")
+        if len(entry.descriptor.strip()) > MAX_DESCRIPTOR_LENGTH:
+            raise _bad(
+                f"Descriptor longer than {MAX_DESCRIPTOR_LENGTH} characters: {entry.id}"
+            )
+        entries[entry.id] = {
+            "slot": entry.slot,
+            "descriptor": entry.descriptor,
+            "allow_private": entry.allow_private,
+            "allow_public": entry.allow_public,
+        }
+    try:
+        stored = save_model_selection(entries)
+    except ValueError as exc:
+        raise _bad(str(exc))
+    logger.info(
+        "[admin] %s updated model selection: %d slotted, %d restricted",
+        user["email"],
+        sum(1 for e in stored.values() if e["slot"] is not None),
+        sum(1 for e in stored.values() if not (e["allow_private"] and e["allow_public"])),
+    )
+    return _model_selection_view()
+
+
+# ---------------------------------------------------------------------------
 # Inference providers (Settings > Inference Providers)
 # ---------------------------------------------------------------------------
 

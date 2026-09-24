@@ -8,6 +8,8 @@ Admin-only Settings > Inference Providers panel for LLM backend configuration. I
 
 - **Provider instances** (zero or more): each is one configuration of an API-key provider kind -- today the only kind is `openrouter`, powering the `OpenRouterProvider` (see [LLM Providers -- OpenRouterProvider](llm-providers.md#openrouterprovider)) -- with an admin-chosen label, its own API key, and its own admin-chosen model list. Several instances of the same kind can coexist (a personal and a team OpenRouter key with different curated models); the "+ Add OpenRouter configuration" button at the bottom of the section creates one. Models are added per instance from a typeahead over the OpenRouter catalog (or typed in as a custom id) and carry the same enable checkbox. Local inference is the expected next kind (`INSTANCE_KINDS` in `config/inference_providers.py` is the registry) and is not supported yet.
 
+How the enabled models are then *presented* to users -- which ones sit at the top level of the composer's model menu with what descriptor, and whether each may be used in private or public-project conversations -- is a separate admin section, Settings > Model Selection (see [Model Selection](model-selection.md)); this panel only decides which models exist and are enabled.
+
 Every model row shows the **real model id string used in API calls** (the Vertex publisher id such as `claude-haiku-4-5`, or the OpenRouter wire id such as `deepseek/deepseek-v4-flash-0731`) as its primary label, the friendly name muted beside it, and a liveness dot for the stored health verdict.
 
 ### Qualified model ids

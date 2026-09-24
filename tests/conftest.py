@@ -46,3 +46,9 @@ def _isolated_inference_provider_files(tmp_path, monkeypatch):
     monkeypatch.setattr(ip, "INFERENCE_PROVIDERS_FILE", tmp_path / "inference_providers.json")
     monkeypatch.setattr(ip, "INFERENCE_CREDENTIALS_DIR", tmp_path / "inference_credentials")
     monkeypatch.setattr(catalog, "OPENROUTER_CATALOG_FILE", tmp_path / "openrouter_catalog.json")
+    # Same for the admin Model Selection store (read by public_model_catalog
+    # and the turn-level usage check): tmp_path means "file absent", i.e.
+    # the historical default top-level picks.
+    import config.model_selection as model_selection
+
+    monkeypatch.setattr(model_selection, "MODEL_SELECTION_FILE", tmp_path / "model_selection.json")

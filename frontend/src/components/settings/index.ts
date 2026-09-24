@@ -12,5 +12,6 @@ export { ServiceCredentialsSection } from './ServiceCredentialsSection';
 export { InferenceProvidersSection } from './InferenceProvidersSection';
 export { PasswordSection } from './PasswordSection';
 export { SignInSection } from './SignInSection';
+export { ModelSelectionSection } from './ModelSelectionSection';
 export { SignOutSection } from './SignOutSection';
 export { AboutSection } from './AboutSection';

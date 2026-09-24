@@ -52,6 +52,7 @@ from chat.llm.config import (
     get_provider_for_model,
     get_provider_instance,
     get_backend_for_model,
+    get_model_display_name,
     model_instance_id,
 )
 
@@ -595,6 +596,20 @@ async def run_conversation_turn(
                     "server-wide. An admin can grant access in Settings > "
                     "Features."
                 )
+
+        # Admin Model Selection usage rules (config/model_selection.py):
+        # a model can be unticked for private and/or public conversations.
+        # The composer already hides disallowed models, so this only fires
+        # for a conversation that was on the model before the admin
+        # changed the rule (or a hand-crafted send); the durable error
+        # tells the user to switch models.
+        from config.model_selection import is_model_allowed
+        if not is_model_allowed(model, public=is_public):
+            raise RuntimeError(
+                f"The model {get_model_display_name(model)} is not allowed in "
+                f"{'public' if is_public else 'private'} conversations. "
+                "Pick another model from the model menu and send again."
+            )
 
         # Resolve auto-loaded skills from the autoloads table. Cross-user
         # subagent conversations skip every autoload tier and instead load

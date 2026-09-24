@@ -71,6 +71,7 @@ INFERENCE_PROVIDERS_FILE: Path = DATA_DIR / "inference_providers.json"
 OPENROUTER_CATALOG_FILE: Path = DATA_DIR / "openrouter_catalog.json"
 MODEL_HEALTH_FILE: Path = DATA_DIR / "model_health.json"
 FEATURE_GATES_FILE: Path = DATA_DIR / "feature_gates.json"
+MODEL_SELECTION_FILE: Path = DATA_DIR / "model_selection.json"
 
 
 def migrate_legacy_database_file() -> None:

@@ -1266,6 +1266,47 @@ export interface AppModelInfo {
   provider_label: string;
   max_input_tokens: number;
   deprecated: boolean;
+  // Admin Model Selection settings (config/model_selection.py): the
+  // composer menu's top-level slot (1..max, null = "All models" only), the
+  // free-text label shown for a slotted model, and whether the model may be
+  // used in private / public-project conversations.
+  slot: number | null;
+  descriptor: string;
+  allow_private: boolean;
+  allow_public: boolean;
+}
+
+// One row of the admin Settings > Model Selection table
+export interface ModelSelectionRow {
+  id: string;
+  wire_id: string;
+  display_name: string;
+  provider_label: string;
+  instance_id: string | null;
+  // Offerable right now: credentials configured and no failing health verdict
+  available: boolean;
+  unavailable_reason: 'not_configured' | 'failing' | null;
+  slot: number | null;
+  descriptor: string;
+  allow_private: boolean;
+  allow_public: boolean;
+}
+
+export interface ModelSelectionListResponse {
+  max_slots: number;
+  max_descriptor_length: number;
+  models: ModelSelectionRow[];
+}
+
+// Full replacement: unlisted models are reset to unset
+export interface ModelSelectionUpdate {
+  models: {
+    id: string;
+    slot: number | null;
+    descriptor: string;
+    allow_private: boolean;
+    allow_public: boolean;
+  }[];
 }
 
 // Schedule types

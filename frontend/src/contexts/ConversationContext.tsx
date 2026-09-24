@@ -187,6 +187,10 @@ interface ConversationContextValue {
   getLoadedSkillsForConversation: (conversationId: string) => string[];
   setLoadedSkillsForConversation: (conversationId: string, skillIds: string[]) => void;
   markSkillsAsLoaded: (conversationId: string, skillIds: string[]) => void;
+  // Re-fetch GET /app/api/config and replace the model catalog +
+  // available_models (used after an admin saves Settings > Model Selection
+  // so the composer menu in this tab reflects the change without a reload).
+  refreshModelCatalog: () => Promise<void>;
   // Admin state
   isAdmin: boolean;
   // Server-global admin feature gates that are currently on (enabled_features
@@ -620,6 +624,23 @@ export function ConversationProvider({ children }: ConversationProviderProps) {
     }
   }, []);
 
+  const refreshModelCatalog = useCallback(async () => {
+    try {
+      const response = await fetch('/app/api/config');
+      if (!response.ok) return;
+      const data = await response.json();
+      // Catalog before available_models: consumers re-render on the state
+      // change and read the (module-state) catalog during that render.
+      setModelCatalog(data.models);
+      if (Array.isArray(data.available_models)) {
+        availableModelIdsRef.current = data.available_models;
+        setAvailableModelIds(data.available_models);
+      }
+    } catch {
+      // Best-effort: the next page load picks the change up anyway.
+    }
+  }, []);
+
   const refreshEnabledFeatures = useCallback(async () => {
     const userInfo = await checkSession();
     if (userInfo) {
@@ -752,6 +773,7 @@ export function ConversationProvider({ children }: ConversationProviderProps) {
     getLoadedSkillsForConversation,
     setLoadedSkillsForConversation: setLoadedSkillsForConversationCb,
     markSkillsAsLoaded,
+    refreshModelCatalog,
     isAdmin,
     enabledFeatures,
     refreshEnabledFeatures,
@@ -821,6 +843,7 @@ export function ConversationProvider({ children }: ConversationProviderProps) {
     getLoadedSkillsForConversation,
     setLoadedSkillsForConversationCb,
     markSkillsAsLoaded,
+    refreshModelCatalog,
     isAdmin,
     enabledFeatures,
     refreshEnabledFeatures,
