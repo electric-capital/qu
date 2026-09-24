@@ -10,18 +10,41 @@
 import type {
   AdminConversationModelUsage,
   AdminConversationUsageTotal,
+  AdminCostSource,
 } from '../api/types';
 import { formatNumber } from '../utils/formatters';
 import './ConversationUsageCell.css';
 
 /**
- * Compact dollar format for estimated costs. Costs are list-price estimates
- * (see db/llm_pricing.py), so two decimals is plenty at scan granularity;
- * anything positive below a cent shows as "<$0.01" rather than "$0.00".
+ * Compact dollar format for costs. Two decimals is plenty at scan
+ * granularity; anything positive below a cent shows as "<$0.01" rather
+ * than "$0.00".
  */
 export function formatUsd(v: number): string {
   if (v > 0 && v < 0.01) return '<$0.01';
   return `$${v.toFixed(2)}`;
+}
+
+/**
+ * Scan-format a cost with its provenance: a figure built entirely from
+ * provider-reported amounts (OpenRouter's `usage.cost`) shows as-is, while
+ * anything that includes a list-price estimate keeps the "~" prefix.
+ */
+export function formatCost(v: number, source: AdminCostSource | null): string {
+  const usd = formatUsd(v);
+  return source === 'reported' ? usd : `~${usd}`;
+}
+
+/** Tooltip wording for where a cost figure came from. */
+export function describeCostSource(source: AdminCostSource | null): string {
+  switch (source) {
+    case 'reported':
+      return 'reported by the provider';
+    case 'mixed':
+      return 'partly provider-reported, partly list-price estimate';
+    default:
+      return 'list-price estimate';
+  }
 }
 
 /**
@@ -73,8 +96,9 @@ function formatModelUsageTooltip(m: AdminConversationModelUsage): string {
   // of a cent, and this is where an admin reads exact numbers.
   const cost =
     m.estimated_cost_usd === null
-      ? 'estimated cost: n/a (no pricing entry for this model)'
-      : `estimated cost: ~$${m.estimated_cost_usd.toFixed(4)} (list-price estimate)`;
+      ? 'cost: n/a (no pricing entry for this model)'
+      : `cost: ${m.cost_source === 'reported' ? '' : '~'}$${m.estimated_cost_usd.toFixed(4)} ` +
+        `(${describeCostSource(m.cost_source)})`;
   if (m.provider === 'gemini') {
     const g = m.metrics;
     return (
@@ -124,14 +148,17 @@ export function ConversationUsageCell({
     <div className="tokens-cell">
       <div
         className="tokens-total"
-        title="All-in token magnitude across all models and providers; ~$ is a list-price estimate"
+        title={
+          'All-in token magnitude across all models and providers; ' +
+          `$ is ${describeCostSource(usageTotal.cost_source)} (~ marks an estimate)`
+        }
       >
         {formatNumber(usageTotal.total_tokens)} tokens ·{' '}
         {usageTotal.call_count} call
         {usageTotal.call_count === 1 ? '' : 's'}
         {usageTotal.estimated_cost_usd !== null && (
           <span className="tokens-cost">
-            {' '}· ~{formatUsd(usageTotal.estimated_cost_usd)}
+            {' '}· {formatCost(usageTotal.estimated_cost_usd, usageTotal.cost_source)}
           </span>
         )}
       </div>
@@ -147,7 +174,7 @@ export function ConversationUsageCell({
               {formatModelUsageRow(m)}
               {m.estimated_cost_usd !== null && (
                 <span className="tokens-cost">
-                  {' '}· ~{formatUsd(m.estimated_cost_usd)}
+                  {' '}· {formatCost(m.estimated_cost_usd, m.cost_source)}
                 </span>
               )}
             </span>

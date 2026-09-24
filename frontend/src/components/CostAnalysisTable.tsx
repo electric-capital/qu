@@ -13,7 +13,11 @@ import { RefreshCw } from 'lucide-react';
 import { fetchMostExpensiveConversations } from '../api/client';
 import type { AdminActiveConversation } from '../api/types';
 import { formatNumber, formatRelativeTimestamp } from '../utils/formatters';
-import { ConversationUsageCell, formatUsd } from './ConversationUsageCell';
+import {
+  ConversationUsageCell,
+  describeCostSource,
+  formatCost,
+} from './ConversationUsageCell';
 import { ReportDateRange, resolveRange } from './ReportDateRange';
 import type { RangeKey } from './ReportDateRange';
 import './CostAnalysisTable.css';
@@ -128,8 +132,14 @@ export function CostAnalysisTable() {
                 </td>
                 <td className="col-cost">
                   {row.usage_total.estimated_cost_usd !== null ? (
-                    <span className="cost-value">
-                      ~{formatUsd(row.usage_total.estimated_cost_usd)}
+                    <span
+                      className="cost-value"
+                      title={describeCostSource(row.usage_total.cost_source)}
+                    >
+                      {formatCost(
+                        row.usage_total.estimated_cost_usd,
+                        row.usage_total.cost_source
+                      )}
                     </span>
                   ) : (
                     <span

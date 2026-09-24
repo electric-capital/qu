@@ -157,6 +157,8 @@ def test_stream_text_and_tool_call(provider, session):
     assert client.kwargs["messages"][0] == {"role": "system", "content": "Be helpful."}
     assert client.kwargs["tools"][0]["function"]["name"] == "get_time"
     assert client.kwargs["stream_options"] == {"include_usage": True}
+    # OpenRouter accounting opt-in: the usage chunk then carries ``cost``.
+    assert client.kwargs["extra_body"] == {"usage": {"include": True}}
 
     text_events = [e for e in events if e.type == "text"]
     assert "".join(e.text for e in text_events) == "Hello"
@@ -202,6 +204,38 @@ def test_usage_capture_and_get_usage(provider, session):
         "cached_prompt_tokens": 100,
         "reasoning_tokens": 5,
     }
+
+
+def test_usage_capture_records_reported_cost(provider, session):
+    """The OpenRouter accounting fields ride along in raw_usage verbatim
+    (``cost_details`` flattened to ``upstream_inference_cost``); malformed
+    values are skipped rather than recorded."""
+    usage = SimpleNamespace(
+        prompt_tokens=120,
+        completion_tokens=30,
+        total_tokens=150,
+        prompt_tokens_details=None,
+        completion_tokens_details=None,
+        cost=0.000123,
+        cost_details={"upstream_inference_cost": 0.0001},
+        is_byok=True,
+    )
+    _stream_all(provider, session, "hi", [_chunk(usage=usage)])
+    raw = provider.get_usage(session).raw_usage
+    assert raw["cost"] == pytest.approx(0.000123)
+    assert raw["upstream_inference_cost"] == pytest.approx(0.0001)
+    assert raw["is_byok"] is True
+
+    # Absent / malformed accounting fields never reach raw_usage.
+    _stream_all(provider, session, "hi", [_chunk(usage=SimpleNamespace(
+        prompt_tokens=1, completion_tokens=1, total_tokens=2,
+        prompt_tokens_details=None, completion_tokens_details=None,
+        cost="not-a-number", cost_details=None, is_byok="yes",
+    ))])
+    raw = provider.get_usage(session).raw_usage
+    assert "cost" not in raw
+    assert "upstream_inference_cost" not in raw
+    assert "is_byok" not in raw
 
 
 def test_tool_results_extend_history_as_tool_messages(provider, session):

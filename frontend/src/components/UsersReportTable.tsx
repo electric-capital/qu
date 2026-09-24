@@ -4,7 +4,8 @@
  * Fetches /admin/system-monitor/user-report for a selected date range (same
  * picker as Cost Analysis) and renders one row per user: range-clipped
  * active days and conversation count (both excluding routines), the
- * estimated cost split into non-routine vs routine spend, the routine spend
+ * cost split into non-routine vs routine spend (provider-reported where
+ * the provider reports it, list-price estimated otherwise), the routine spend
  * itemized per routine (priciest first), and the per-model token breakdown
  * aggregated across all the user's conversations. On-demand
  * report like Cost Analysis: fetches on mount, on range change, and via the
@@ -14,8 +15,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { fetchAdminUserReport } from '../api/client';
-import type { AdminUserReportRow, AdminUserRoutineCost } from '../api/types';
-import { ConversationUsageCell, formatUsd } from './ConversationUsageCell';
+import type {
+  AdminCostSource,
+  AdminUserReportRow,
+  AdminUserRoutineCost,
+} from '../api/types';
+import {
+  ConversationUsageCell,
+  describeCostSource,
+  formatCost,
+} from './ConversationUsageCell';
 import { ReportDateRange, resolveRange } from './ReportDateRange';
 import type { RangeKey } from './ReportDateRange';
 import './UsersReportTable.css';
@@ -23,7 +32,13 @@ import './UsersReportTable.css';
 const UNPRICED_TITLE =
   'Some models in this split have no pricing entry; per-model estimates are in the token-usage tooltips';
 
-function CostCell({ cost }: { cost: number | null }) {
+function CostCell({
+  cost,
+  source,
+}: {
+  cost: number | null;
+  source: AdminCostSource | null;
+}) {
   if (cost === null) {
     return (
       <span className="cell-empty" title={UNPRICED_TITLE}>
@@ -34,7 +49,11 @@ function CostCell({ cost }: { cost: number | null }) {
   if (cost === 0) {
     return <span className="cell-empty">&mdash;</span>;
   }
-  return <span className="cost-value">~{formatUsd(cost)}</span>;
+  return (
+    <span className="cost-value" title={describeCostSource(source)}>
+      {formatCost(cost, source)}
+    </span>
+  );
 }
 
 // Routines shown before the per-cell "+N more" expander kicks in. Power
@@ -47,8 +66,9 @@ function formatRoutineTooltip(r: AdminUserRoutineCost): string {
   const runs = `${r.conversation_count} run${r.conversation_count === 1 ? '' : 's'} in range`;
   const cost =
     r.cost_usd === null
-      ? 'estimated cost: n/a (a model used by this routine has no pricing entry)'
-      : `estimated cost: ~$${r.cost_usd.toFixed(4)} (list-price estimate)`;
+      ? 'cost: n/a (a model used by this routine has no pricing entry)'
+      : `cost: ${r.cost_source === 'reported' ? '' : '~'}$${r.cost_usd.toFixed(4)} ` +
+        `(${describeCostSource(r.cost_source)})`;
   return `${where}\n${runs}\n${cost}`;
 }
 
@@ -77,7 +97,7 @@ function RoutineCostsCell({ routines }: { routines: AdminUserRoutineCost[] }) {
             {r.cost_usd === null ? (
               <span className="cell-empty">n/a</span>
             ) : (
-              <>~{formatUsd(r.cost_usd)}</>
+              <>{formatCost(r.cost_usd, r.cost_source)}</>
             )}
           </span>
         </div>
@@ -211,15 +231,21 @@ export function UsersReportTable() {
                 </td>
                 <td
                   className="col-cost"
-                  title="Estimated cost of the user's non-routine conversations in the selected range"
+                  title="Cost of the user's non-routine conversations in the selected range (~ marks a list-price estimate)"
                 >
-                  <CostCell cost={row.cost_excluding_routines_usd} />
+                  <CostCell
+                    cost={row.cost_excluding_routines_usd}
+                    source={row.cost_excluding_routines_source}
+                  />
                 </td>
                 <td
                   className="col-cost"
-                  title="Estimated cost of the user's routine-created conversations in the selected range"
+                  title="Cost of the user's routine-created conversations in the selected range (~ marks a list-price estimate)"
                 >
-                  <CostCell cost={row.cost_routines_usd} />
+                  <CostCell
+                    cost={row.cost_routines_usd}
+                    source={row.cost_routines_source}
+                  />
                 </td>
                 <td className="col-routines">
                   <RoutineCostsCell routines={row.routine_costs} />

@@ -19,7 +19,7 @@ import logging
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import case, func, select
+from sqlalchemy import case, func, literal, select
 
 from db.engine import AsyncSessionLocal
 from db.llm_pricing import LONG_CONTEXT_THRESHOLD, estimate_cost_usd
@@ -57,6 +57,12 @@ _OPENROUTER_USAGE_FIELDS = (
     "cached_prompt_tokens",
     "reasoning_tokens",
     "total_tokens",
+    # Accounting fields OpenRouter reports per request (see the
+    # LlmCallOpenRouter column comments); read queries prefer the reported
+    # USD amount over the list-price estimate.
+    "cost",
+    "upstream_inference_cost",
+    "is_byok",
 )
 
 _USAGE_FIELDS_BY_PROVIDER = {
@@ -321,6 +327,17 @@ async def get_usage_by_model_for_conversations(
     ``db/llm_pricing.py`` (cost is linear in the token fields within a
     tier), and merges the buckets back into one entry per model.
 
+    Reported cost: OpenRouter rows carry the USD amount the provider
+    reported charging (``cost``, plus ``upstream_inference_cost`` on BYOK
+    rows). The query additionally groups on a per-call "has reported cost"
+    flag; buckets
+    with it use the summed reported amount instead of the estimate, and
+    every cost figure is accompanied by a ``cost_source`` --
+    ``"reported"`` (every call priced from provider-reported amounts),
+    ``"estimated"`` (every call list-price estimated), ``"mixed"`` (some
+    of each, e.g. rows recorded before capture existed) or None when the
+    figure itself is None.
+
     Args:
         conversation_ids: Conversation UUIDs to aggregate. Conversations with
             no recorded calls simply do not appear in the result.
@@ -337,6 +354,7 @@ async def get_usage_by_model_for_conversations(
                 {"model": str, "provider": "gemini", "call_count": N,
                  "total_tokens": N,  # prompt + candidates + thoughts + tool_use_prompt
                  "estimated_cost_usd": float | None,
+                 "cost_source": "reported" | "estimated" | "mixed" | None,
                  "metrics": {"prompt_token_count": N,
                              "cached_content_token_count": N,
                              "candidates_token_count": N,
@@ -355,7 +373,8 @@ async def get_usage_by_model_for_conversations(
             # in the conversation lacks pricing (a partial sum would read as
             # a full conversation cost).
             "total": {"call_count": N, "total_tokens": N,
-                      "estimated_cost_usd": float | None},
+                      "estimated_cost_usd": float | None,
+                      "cost_source": "reported" | "estimated" | "mixed" | None},
         }
     """
     if not conversation_ids:
@@ -447,9 +466,13 @@ async def get_usage_by_user(
             "conversation_count": N,          # non-routine only
             "routine_conversation_count": N,
             # Cost split; each is None when any model in that split lacks
-            # pricing (the usual partial-sum convention, per split):
+            # pricing (the usual partial-sum convention, per split), with
+            # a cost_source companion (same values as the model entries,
+            # None while the split has no priced contribution):
             "cost_excluding_routines_usd": float | None,
+            "cost_excluding_routines_source": str | None,
             "cost_routines_usd": float | None,
+            "cost_routines_source": str | None,
             # Sum of the priced per-model estimates (both splits) -- the
             # ranking key, never None:
             "known_cost_usd": float,
@@ -463,6 +486,7 @@ async def get_usage_by_user(
                     # None when any model under this routine is unpriced
                     # (same per-split convention, one split per routine):
                     "cost_usd": float | None,
+                    "cost_source": str | None,
                     "known_cost_usd": float,
                 },
                 ...
@@ -483,11 +507,14 @@ async def get_usage_by_user(
                     "call_count": 0,
                     "total_tokens": 0,
                     "estimated_cost_usd": 0.0,
+                    "cost_source": None,
                 },
                 "conversations": set(),
                 "routine_conversations": set(),
                 "cost_excluding_routines_usd": 0.0,
+                "cost_excluding_routines_source": None,
                 "cost_routines_usd": 0.0,
+                "cost_routines_source": None,
                 "known_cost_usd": 0.0,
                 "routines": {},
             },
@@ -496,31 +523,38 @@ async def get_usage_by_user(
         routine_id = routine_by_conv.get(conv_id)
         is_routine = routine_id is not None
         entry["routine_conversations" if is_routine else "conversations"].add(conv_id)
-        cost_key = "cost_routines_usd" if is_routine else "cost_excluding_routines_usd"
         cost = model_entry["estimated_cost_usd"]
-        if cost is None:
-            # A partial sum would read as the split's full cost.
-            entry[cost_key] = None
-        else:
+        source = model_entry["cost_source"]
+        if cost is not None:
             entry["known_cost_usd"] += cost
-            if entry[cost_key] is not None:
-                entry[cost_key] += cost
-
+        # A partial sum would read as the split's full cost, so an unpriced
+        # model nulls its split (_add_cost).
         if is_routine:
+            _add_cost(entry, "cost_routines_usd", "cost_routines_source", cost, source)
             # Per-routine breakdown of the routine split: the same
             # null-on-unpriced convention, applied per routine, so one
             # unpriced model only hides its own routine's figure.
             routine_entry = entry["routines"].setdefault(
                 routine_id,
-                {"conversations": set(), "cost_usd": 0.0, "known_cost_usd": 0.0},
+                {
+                    "conversations": set(),
+                    "cost_usd": 0.0,
+                    "cost_source": None,
+                    "known_cost_usd": 0.0,
+                },
             )
             routine_entry["conversations"].add(conv_id)
-            if cost is None:
-                routine_entry["cost_usd"] = None
-            else:
+            if cost is not None:
                 routine_entry["known_cost_usd"] += cost
-                if routine_entry["cost_usd"] is not None:
-                    routine_entry["cost_usd"] += cost
+            _add_cost(routine_entry, "cost_usd", "cost_source", cost, source)
+        else:
+            _add_cost(
+                entry,
+                "cost_excluding_routines_usd",
+                "cost_excluding_routines_source",
+                cost,
+                source,
+            )
 
         # Merge into the per-user per-model breakdown. Same-tier pricing is
         # linear in the token fields, and the tier split happened per call
@@ -537,18 +571,12 @@ async def get_usage_by_user(
             merged["total_tokens"] += model_entry["total_tokens"]
             for field, value in model_entry["metrics"].items():
                 merged["metrics"][field] += value
-            if merged["estimated_cost_usd"] is not None and cost is not None:
-                merged["estimated_cost_usd"] += cost
-            else:
-                merged["estimated_cost_usd"] = None
+            _add_cost(merged, "estimated_cost_usd", "cost_source", cost, source)
 
         total = entry["total"]
         total["call_count"] += model_entry["call_count"]
         total["total_tokens"] += model_entry["total_tokens"]
-        if total["estimated_cost_usd"] is not None and cost is not None:
-            total["estimated_cost_usd"] += cost
-        else:
-            total["estimated_cost_usd"] = None
+        _add_cost(total, "estimated_cost_usd", "cost_source", cost, source)
 
     result: dict[int, dict] = {}
     for user_id, entry in by_user.items():
@@ -573,6 +601,7 @@ async def get_usage_by_user(
                     None if routine_entry["cost_usd"] is None
                     else round(routine_entry["cost_usd"], 6)
                 ),
+                "cost_source": routine_entry["cost_source"],
                 "known_cost_usd": round(routine_entry["known_cost_usd"], 6),
             }
             for routine_id, routine_entry in entry["routines"].items()
@@ -587,10 +616,12 @@ async def get_usage_by_user(
                 None if entry["cost_excluding_routines_usd"] is None
                 else round(entry["cost_excluding_routines_usd"], 6)
             ),
+            "cost_excluding_routines_source": entry["cost_excluding_routines_source"],
             "cost_routines_usd": (
                 None if entry["cost_routines_usd"] is None
                 else round(entry["cost_routines_usd"], 6)
             ),
+            "cost_routines_source": entry["cost_routines_source"],
             "known_cost_usd": round(entry["known_cost_usd"], 6),
             "routines": routines,
         }
@@ -663,7 +694,11 @@ async def get_latest_context_tokens_for_conversations(
 
 
 # (table, provider, metric fields, fields summed into total_tokens,
-# fields whose per-call sum is the context size the pricing tier keys on).
+# fields whose per-call sum is the context size the pricing tier keys on,
+# reported-cost spec -- ``(marker column, per-row USD expression builder)``
+# where a non-NULL marker column means the provider reported the call's
+# cost and the builder maps the row class to that amount; None for
+# providers that report token counts only).
 # Gemini total = summed total_token_count when reported (candidates
 # excludes thoughts; prompt includes cached, counted once). Anthropic
 # reports no total, so it is the sum of all four buckets.
@@ -685,6 +720,7 @@ _PROVIDER_AGG_SPECS = (
             "tool_use_prompt_token_count",
         ),
         ("prompt_token_count",),
+        None,
     ),
     (
         LlmCallAnthropic,
@@ -701,6 +737,7 @@ _PROVIDER_AGG_SPECS = (
             "cache_read_input_tokens",
             "cache_creation_input_tokens",
         ),
+        None,
     ),
     # OpenRouter total = prompt + completion (prompt includes cached, counted
     # once; completion includes reasoning, so total_tokens is not re-summed).
@@ -718,8 +755,55 @@ _PROVIDER_AGG_SPECS = (
             "completion_tokens",
         ),
         ("prompt_tokens",),
+        ("cost", lambda row_cls: _openrouter_reported_cost(row_cls)),
     ),
 )
+
+
+def _openrouter_reported_cost(row_cls):
+    """Per-row USD amount an OpenRouter call cost: what OpenRouter charged
+    the account (``cost``) plus, only on bring-your-own-key requests, the
+    upstream provider's charge billed to the user's own key. OpenRouter has
+    been observed populating ``upstream_inference_cost`` (equal to
+    ``cost``) on non-BYOK requests too, hence the ``is_byok`` gate rather
+    than a plain sum."""
+    return func.coalesce(row_cls.cost, 0.0) + case(
+        (row_cls.is_byok.is_(True), func.coalesce(row_cls.upstream_inference_cost, 0.0)),
+        else_=0.0,
+    )
+
+COST_SOURCE_REPORTED = "reported"
+COST_SOURCE_ESTIMATED = "estimated"
+COST_SOURCE_MIXED = "mixed"
+
+
+def _add_cost(
+    target: dict,
+    value_key: str,
+    source_key: str,
+    cost: Optional[float],
+    source: Optional[str],
+) -> None:
+    """Fold one bucket's cost into ``target[value_key]`` with the
+    null-on-unpriced convention, tracking where the figure came from in
+    ``target[source_key]``.
+
+    The value starts at 0.0 with a None source ("nothing folded in yet");
+    an unpriced contribution (``cost`` None) nulls both for good, since a
+    partial sum would read as the whole figure. Otherwise the source
+    becomes the contribution's source on the first fold and degrades to
+    ``"mixed"`` as soon as a differently-sourced contribution arrives.
+    """
+    if target[value_key] is None or cost is None:
+        target[value_key] = None
+        target[source_key] = None
+        return
+    target[value_key] += cost
+    current = target[source_key]
+    if current is None or current == source:
+        target[source_key] = source
+    else:
+        target[source_key] = COST_SOURCE_MIXED
 
 
 async def _collect_usage_buckets(
@@ -744,28 +828,46 @@ async def _collect_usage_buckets(
     by_key: dict[tuple[str, str], dict] = {}
     user_ids: dict[str, int] = {}
     async with AsyncSessionLocal() as db:
-        for row_cls, provider, metric_fields, total_fields, ctx_fields in _PROVIDER_AGG_SPECS:
+        for (
+            row_cls, provider, metric_fields, total_fields, ctx_fields, cost_spec
+        ) in _PROVIDER_AGG_SPECS:
             context_size = sum(
                 func.coalesce(getattr(row_cls, field), 0) for field in ctx_fields
             )
             long_context = case(
                 (context_size > LONG_CONTEXT_THRESHOLD, 1), else_=0
             )
+            if cost_spec is not None:
+                # Rows carrying a provider-reported amount are bucketed
+                # apart from the ones that must be estimated, so a mixed
+                # window prices each row the best way it can.
+                marker_field, cost_expr = cost_spec
+                has_reported = case(
+                    (getattr(row_cls, marker_field).isnot(None), 1), else_=0
+                )
+                reported_cost = func.coalesce(func.sum(cost_expr(row_cls)), 0.0)
+            else:
+                has_reported = literal(0)
+                reported_cost = literal(0.0)
             stmt = (
                 select(
                     row_cls.conversation_id,
                     row_cls.model,
                     long_context,
+                    has_reported,
                     func.count(row_cls.id),
                     # A conversation has exactly one owner; MAX picks it
                     # without widening the GROUP BY.
                     func.max(row_cls.user_id),
+                    reported_cost,
                     *(
                         func.coalesce(func.sum(getattr(row_cls, field)), 0)
                         for field in metric_fields
                     ),
                 )
-                .group_by(row_cls.conversation_id, row_cls.model, long_context)
+                .group_by(
+                    row_cls.conversation_id, row_cls.model, long_context, has_reported
+                )
             )
             if conversation_ids is not None:
                 stmt = stmt.where(row_cls.conversation_id.in_(conversation_ids))
@@ -774,15 +876,23 @@ async def _collect_usage_buckets(
             if end is not None:
                 stmt = stmt.where(row_cls.created_at < end)
             result = await db.execute(stmt)
-            for conv_id, model, is_long, call_count, user_id, *sums in result.all():
+            for (
+                conv_id, model, is_long, is_reported, call_count, user_id,
+                reported, *sums
+            ) in result.all():
                 metrics = {
                     field: int(value)
                     for field, value in zip(metric_fields, sums)
                 }
                 total_tokens = sum(metrics[field] for field in total_fields)
-                cost = estimate_cost_usd(
-                    provider, model, metrics, long_context=bool(is_long)
-                )
+                if is_reported:
+                    cost: Optional[float] = float(reported)
+                    source: Optional[str] = COST_SOURCE_REPORTED
+                else:
+                    cost = estimate_cost_usd(
+                        provider, model, metrics, long_context=bool(is_long)
+                    )
+                    source = COST_SOURCE_ESTIMATED if cost is not None else None
                 user_ids[conv_id] = int(user_id)
                 entry = by_key.get((conv_id, model))
                 if entry is None:
@@ -792,6 +902,7 @@ async def _collect_usage_buckets(
                         "call_count": int(call_count),
                         "total_tokens": total_tokens,
                         "estimated_cost_usd": cost,
+                        "cost_source": source,
                         "metrics": metrics,
                     }
                     continue
@@ -799,10 +910,7 @@ async def _collect_usage_buckets(
                 entry["total_tokens"] += total_tokens
                 for field in metric_fields:
                     entry["metrics"][field] += metrics[field]
-                if entry["estimated_cost_usd"] is not None and cost is not None:
-                    entry["estimated_cost_usd"] += cost
-                else:
-                    entry["estimated_cost_usd"] = None
+                _add_cost(entry, "estimated_cost_usd", "cost_source", cost, source)
     return by_key, user_ids
 
 
@@ -826,6 +934,7 @@ def _group_buckets_by_conversation(
                     "call_count": 0,
                     "total_tokens": 0,
                     "estimated_cost_usd": 0.0,
+                    "cost_source": None,
                 },
             },
         )
@@ -833,16 +942,17 @@ def _group_buckets_by_conversation(
         total = entry["total"]
         total["call_count"] += model_entry["call_count"]
         total["total_tokens"] += model_entry["total_tokens"]
-        if (
-            total["estimated_cost_usd"] is not None
-            and model_entry["estimated_cost_usd"] is not None
-        ):
-            total["estimated_cost_usd"] = round(
-                total["estimated_cost_usd"] + model_entry["estimated_cost_usd"], 6
-            )
-        else:
-            # A partial sum would read as the whole conversation's cost.
-            total["estimated_cost_usd"] = None
+        # A partial sum would read as the whole conversation's cost, so an
+        # unpriced model nulls the total (_add_cost).
+        _add_cost(
+            total,
+            "estimated_cost_usd",
+            "cost_source",
+            model_entry["estimated_cost_usd"],
+            model_entry["cost_source"],
+        )
+        if total["estimated_cost_usd"] is not None:
+            total["estimated_cost_usd"] = round(total["estimated_cost_usd"], 6)
 
     # Stable, useful ordering: heaviest model first within each conversation.
     for entry in by_conversation.values():

@@ -253,6 +253,51 @@ def test_usage_by_user_groups_and_splits_routine_cost(_isolated_db):
     assert [m["model"] for m in user2["models"]] == ["gemini-3.5-flash"]
 
 
+def test_usage_by_user_tracks_cost_source_per_split(_isolated_db):
+    """Each split and routine entry says whether its figure came from
+    provider-reported amounts, list-price estimates, or both."""
+    store, models_mod = _isolated_db
+    chat, routine_chat = str(uuid.uuid4()), str(uuid.uuid4())
+
+    def _openrouter(conversation_id, cost):
+        raw_usage = {"prompt_tokens": 1_000_000, "completion_tokens": 0}
+        if cost is not None:
+            raw_usage["cost"] = cost
+        _run(store.record_api_call(
+            conversation_id=conversation_id,
+            user_id=1,
+            model="openrouter:deepseek/deepseek-v4-flash-0731",
+            call_type=models_mod.ApiCallType.TOP_LEVEL,
+            input_tokens=1_000_000,
+            output_tokens=0,
+            duration_ms=1,
+            provider="openrouter",
+            raw_usage=raw_usage,
+        ))
+
+    # Non-routine chat: reported only.
+    _openrouter(chat, cost=0.3)
+    # Routine chat: one reported OpenRouter call + one estimated Opus call.
+    _openrouter(routine_chat, cost=0.2)
+    _record_anthropic(store, models_mod, routine_chat, output_tokens=0, user_id=1)
+
+    user = _run(store.get_usage_by_user(
+        routine_id_by_conversation={routine_chat: "routine-1"}
+    ))[1]
+    assert user["cost_excluding_routines_usd"] == pytest.approx(0.3)
+    assert user["cost_excluding_routines_source"] == "reported"
+    # 100 Opus input tokens at $5/M.
+    assert user["cost_routines_usd"] == pytest.approx(0.2 + 0.0005)
+    assert user["cost_routines_source"] == "mixed"
+    assert user["total"]["cost_source"] == "mixed"
+    (routine,) = user["routines"]
+    assert routine["cost_usd"] == pytest.approx(0.2005)
+    assert routine["cost_source"] == "mixed"
+    by_model = {m["model"]: m for m in user["models"]}
+    assert by_model["openrouter:deepseek/deepseek-v4-flash-0731"]["cost_source"] == "reported"
+    assert by_model["claude-opus-4-8"]["cost_source"] == "estimated"
+
+
 def test_usage_by_user_unpriced_model_nulls_only_its_split(_isolated_db):
     """An unpriced model poisons its own cost split; the other stays exact."""
     store, models_mod = _isolated_db
