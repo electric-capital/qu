@@ -8,6 +8,14 @@ RUN pip install --no-cache-dir requests openpyxl python-docx matplotlib seaborn 
 
 ENV MPLBACKEND=Agg
 
+# Pre-build matplotlib's font cache at image build time. Containers run with
+# a fresh HOME=/tmp, so without this every run that imports matplotlib
+# rebuilds fontlist.json from scratch (~1.2s). The directory must stay
+# writable: matplotlib falls back to a throwaway temp dir (and rebuilds)
+# when MPLCONFIGDIR is not writable by the unprivileged run user.
+ENV MPLCONFIGDIR=/opt/matplotlib
+RUN python3 -c "import matplotlib.pyplot" && chmod -R a+rwX /opt/matplotlib
+
 # Entrypoint script that starts a socat forwarder so scripts can reach
 # the host API proxy at localhost:8000 (forwarded to 10.0.2.2:8000 via
 # slirp4netns), then execs the user's command.

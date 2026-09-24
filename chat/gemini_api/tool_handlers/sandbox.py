@@ -16,6 +16,7 @@ from chat.gemini_api.constants import (
     SCRIPT_RUNNER_MAX_OUTPUT,
     get_sandbox_port,
 )
+from chat.gemini_api.sandbox_runtime import get_sandbox_runtime
 from chat.gemini_api.sandbox_seccomp import get_sandbox_seccomp_profile_path
 from chat.sandbox_tokens import TOKEN_GRACE_SECONDS, sandbox_token_lease
 from chat.gemini_api.tool_handlers._common import (
@@ -82,7 +83,13 @@ def _build_script_podman_cmd(
     host_uid = os.getuid()
     host_gid = os.getgid()
 
-    cmd = ["podman", "run", "--rm"]
+    cmd = ["podman"]
+    # OCI runtime: crun when available (much cheaper container create and
+    # teardown than runc), see chat/gemini_api/sandbox_runtime.py.
+    runtime = get_sandbox_runtime()
+    if runtime:
+        cmd += ["--runtime", runtime]
+    cmd += ["run", "--rm"]
     if interactive:
         cmd.append("-i")
 
