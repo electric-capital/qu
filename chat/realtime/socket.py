@@ -132,6 +132,36 @@ def get_active_send_run(conversation_id: str) -> Optional[asyncio.Task]:
     return None
 
 
+def is_run_active(conversation_id: str) -> bool:
+    """True while a model run is streaming on this conversation.
+
+    Covers the WS ``send_message`` run and a headless wait-handle resume
+    that has passed its hold gates (``chat.wait_handles.resume``). Reported
+    as ``run_active`` on every ``subscribed`` ack so a client that (re)opens
+    the channel can reconcile its streaming state: the run-lifecycle
+    envelopes (``resume_started`` / ``send_message_finished``) are
+    transient, so one published while the client's socket was down is
+    gone -- without this field a tab that reconnects across the end of a
+    run keeps its "generating" spinner and locked composer until reload.
+
+    Both registries drop a run in the same event-loop step that publishes
+    its ``send_message_finished`` (no await between the publish and the
+    task returning), so an ack computed after that publish never reports a
+    finished run as live.
+    """
+    if get_active_send_run(conversation_id) is not None:
+        return True
+    try:
+        from chat.wait_handles import resume as wait_resume
+        return wait_resume.is_resume_streaming(conversation_id)
+    except Exception:
+        logger.debug(
+            "[realtime] resume liveness check failed (conversation=%s)",
+            conversation_id, exc_info=True,
+        )
+        return False
+
+
 @router.websocket("/stream")
 async def stream_endpoint(websocket: WebSocket, api_key: Optional[str] = None) -> None:
     """The single persistent WS for a browser session.
@@ -322,12 +352,17 @@ async def _handle_subscribe(conn: _Connection, data: dict) -> None:
     # row, which we already gated on above.
     server_seq = int(meta.get("last_message_seq") or 0)
 
+    # Whether a run is streaming right now, so the client can reconcile
+    # its streaming/stop state on (re)subscribe -- see ``is_run_active``.
+    run_active = is_run_active(conv_id)
+
     if client_last_seq >= server_seq:
         await _send_to_client(conn, {
             "type": "subscribed",
             "conversation_id": conv_id,
             "current_seq": server_seq,
             "mode": "up_to_date",
+            "run_active": run_active,
         })
         return
 
@@ -342,6 +377,7 @@ async def _handle_subscribe(conn: _Connection, data: dict) -> None:
             "current_seq": server_seq,
             "mode": "resync",
             "reason": "buffer_evicted",
+            "run_active": run_active,
         })
         return
 
@@ -355,6 +391,7 @@ async def _handle_subscribe(conn: _Connection, data: dict) -> None:
             "current_seq": server_seq,
             "mode": "resync",
             "reason": "buffer_unavailable",
+            "run_active": run_active,
         })
         return
 
@@ -368,6 +405,7 @@ async def _handle_subscribe(conn: _Connection, data: dict) -> None:
         "current_seq": server_seq,
         "mode": "catchup",
         "messages": catchup_messages,
+        "run_active": run_active,
     })
 
 

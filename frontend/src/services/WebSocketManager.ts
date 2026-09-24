@@ -306,6 +306,61 @@ class WebSocketManagerClass {
     this.startBuffer(conversationId);
   }
 
+  /**
+   * Reconcile the local streaming state with the server's view of the run,
+   * from the ``run_active`` field on a ``subscribed`` ack.
+   *
+   * The run-lifecycle envelopes (``resume_started`` /
+   * ``send_message_finished``) are transient: one published while this
+   * tab's socket was down (network blip, watchdog reconnect, a server
+   * stall long enough to trip the heartbeat) is gone for good. The final
+   * messages still arrive through the reconnect ``catchup``, so without
+   * this reconcile a run that ended during the gap left the "generating"
+   * spinner and the locked composer in place until a page reload.
+   *
+   * - ``run_active: false`` while we are streaming: the run is over; drain
+   *   the buffer exactly like a rejected/abandoned send (no synthetic
+   *   "interrupted" marker -- a stopped run persists its own durable
+   *   marker, which the catchup delivered). Skipped while a tracked send
+   *   is still awaiting its ``send_message_accepted`` receipt: the hook
+   *   subscribes and sends back-to-back, so the ack for that subscribe is
+   *   computed before the server has registered the run.
+   * - ``run_active: true`` while we are idle: a run this tab did not start
+   *   (or lost track of across a reconnect / page load) is streaming;
+   *   enter the stop-button state like a headless resume so the composer
+   *   does not offer a doomed second send.
+   *
+   * Absent field (older server) = no-op.
+   */
+  syncRunState(conversationId: string, runActive: unknown): void {
+    if (typeof runActive !== 'boolean') return;
+    const buf = this.buffers.get(conversationId);
+    if (runActive) {
+      if (buf && buf.isStreaming) return;
+      this.attachToResumeStream(conversationId);
+      return;
+    }
+    if (this.hasInFlightSend(conversationId)) return;
+    if (buf) {
+      this.abandonStreaming(conversationId);
+      return;
+    }
+    if (conversationStore.isStreaming(conversationId)) {
+      conversationStore.endStreaming(conversationId);
+      this.notifyStreamComplete(conversationId);
+    }
+  }
+
+  /** A tracked send whose receipt timer is still armed. */
+  private hasInFlightSend(conversationId: string): boolean {
+    for (const pending of this.pendingSends.values()) {
+      if (pending.conversationId === conversationId && pending.ackTimer !== null) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   stopStreaming(conversationId: string): void {
     const buf = this.buffers.get(conversationId);
     if (buf) buf.isInterrupted = true;
@@ -357,6 +412,14 @@ class WebSocketManagerClass {
 
     if (type === 'send_message_accepted') {
       this.handleSendAccepted(conversationId, event);
+      return;
+    }
+
+    if (type === 'subscribed') {
+      // Handled here as well as in useConversation so a buffer whose
+      // ChatPanel is unmounted (the user is on another screen) still
+      // drains when a subscribe refresh reports the run is over.
+      this.syncRunState(conversationId, event.run_active);
       return;
     }
 

@@ -86,6 +86,8 @@ Server reply to `subscribe` (single envelope, three modes):
 - `mode: "catchup"` -- gap fits in the replay buffer; envelope carries `messages: [...]` with each message body and its `seq` stamp.
 - `mode: "resync"` (with a `reason` string -- `"buffer_evicted"`, `"buffer_unavailable"`, `"queue_overflow"`) -- gap exceeds the buffer or queue overflowed. Client REST-fetches `GET /conversations/{id}/tail?after_seq=client_last_seq` and updates `last_seq` from the response.
 
+Every mode also carries `run_active: bool` -- whether a model run is streaming on the conversation right now (`is_run_active()` in `chat/realtime/socket.py`: a live `_active_send_runs` task, or a headless wait-handle resume that has passed its hold gates, tracked by `_streaming_resumes` in `chat/wait_handles/resume.py`). See [Run-State Reconcile on Subscribe](#run-state-reconcile-on-subscribe).
+
 Live envelopes the server emits on a subscribed channel:
 
 - Durable: `message_appended {conversation_id, seq}`. The client's `lastSeqByConversation` map is updated on receipt and the new tail is fetched via REST.
@@ -105,6 +107,20 @@ Live envelopes the server emits on a subscribed channel:
 - Per-user globals: `request_count_changed {counts}`, `conversation_list_changed {conversation_id, action}`, `file_list_changed {conversation_id, project_id, scope}`, `routine_list_changed {project_id}`, `wait_handle_resolved {conversation_id, handle_id, kind, status, request_id?, response?}`. The `file_list_changed` envelope carries a `conversation_id` but is per-user-scoped: project-scoped writes must reach sibling-conversation tabs that don't subscribe to the triggering conversation. The FE allow-list in `PersistentWebSocket.handleMessage` includes its `type` so the global-handler path runs even though a `conversation_id` is present (same pattern as `conversation_list_changed`).
 
 The frontend distinguishes per-conversation envelopes (any envelope carrying a `conversation_id` other than the listed globals) from per-user globals via the explicit allow-list in `PersistentWebSocket.handleMessage` so that envelopes like `conversation_list_changed` and `file_list_changed` (which mention a `conversation_id` but are user-scoped) reach the right handlers.
+
+## Run-State Reconcile on Subscribe
+
+The run-lifecycle envelopes `resume_started` / `send_message_finished` are transient: one published while a tab's socket was down (network blip, watchdog `forceReconnect`, a server heartbeat close after an event-loop stall) is gone for good. The durable rows still arrive through the reconnect `catchup`, so before this reconcile a run that ended during the gap left the tab with its final answer on screen but the "Generating response..." spinner and the locked composer in place until a page reload -- the client's only signal that a run had ended was the transient envelope it never received.
+
+`WebSocketManager.syncRunState(conversationId, run_active)` runs on every `subscribed` ack, from both `useConversation`'s handler (the viewed conversation) and the streaming buffer's own handler (a conversation whose `ChatPanel` is unmounted while the user is on another screen, drained by the 3-min subscribe refresh):
+
+- `run_active: false` while the tab is streaming -- the run is over: drain the buffer like an abandoned send (no synthetic "interrupted" marker; a stopped run persists its own durable marker, which the catchup delivered) and fire `onStreamComplete`. Skipped while a tracked send is still awaiting its `send_message_accepted` receipt: the hook subscribes and sends back-to-back on a fresh conversation, so the ack for that subscribe is computed before the server has registered the run.
+- `run_active: true` while the tab is idle -- a run this tab did not start, or lost track of across a reconnect / page reload, is streaming: enter the same streaming/stop composer state as a `resume_started` (`attachToResumeStream`) so the composer shows the stop button instead of offering a send the server would reject with `already_running`. This is also what makes a page reload mid-run, or a second tab, show the spinner.
+- Field absent (older server) -- no-op.
+
+Both server registries drop a run in the same event-loop step that publishes its `send_message_finished` (no await between the publish and the task returning; `_streaming_resumes` is discarded right after the publish), so an ack computed after that publish never reports a finished run as live. A held resume (sibling cards pending, stopped card) sits in `_active_resumes` without ever publishing the paired envelopes, which is why the resume side reports the `_streaming_resumes` marker rather than task presence.
+
+---
 
 ## Subscription TTL and Refresh
 

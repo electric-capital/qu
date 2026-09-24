@@ -463,6 +463,13 @@ export function useConversation(conversationId: string, options?: UseConversatio
               // page reload recovers the missing tail.
             });
         } else if (type === 'subscribed') {
+          // Reconcile the streaming/stop state with the server's
+          // ``run_active`` verdict first: a run that ended (or started)
+          // while this tab's socket was down never delivered its
+          // transient lifecycle envelope, and this ack is the only
+          // signal that replaces it.
+          webSocketManager.syncRunState(conversationId, event.run_active);
+
           // Server may answer ``catchup`` with embedded message bodies.
           // Apply them directly without a refetch.
           const mode = event.mode as string | undefined;
