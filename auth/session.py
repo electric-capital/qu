@@ -6,7 +6,7 @@ from fastapi import HTTPException, Request
 from itsdangerous import URLSafeSerializer, URLSafeTimedSerializer, BadSignature
 
 from db.user_store import get_user_by_api_key, get_user_by_id
-from auth.config import COOKIE_NAME, COOKIE_VERSION, get_secret_key
+from auth.config import COOKIE_NAME, COOKIE_SECURE, COOKIE_VERSION, get_secret_key
 
 
 def get_cookie_serializer() -> URLSafeSerializer:
@@ -53,6 +53,19 @@ async def get_user_from_cookie(signed_cookie: str) -> Optional[dict]:
         if user is None:
             return None
 
+        # Password-issued sessions carry the fingerprint of the password
+        # hash they were issued under ("pw"). They die when the password
+        # changes (new salt -> new fingerprint) and whenever the deployment
+        # is not in password sign-in mode (after the switch to Google
+        # sign-in, users must sign in again with Google).
+        pw = cookie_value.get("pw")
+        if pw is not None:
+            from auth.config import is_password_login
+            if not is_password_login():
+                return None
+            if not isinstance(pw, str) or pw != user.get("password_fp"):
+                return None
+
         # Check for impersonation: if "imp" (impersonator user ID) is present,
         # validate the impersonator is still a valid admin. If so, annotate the
         # returned user dict with impersonator info. If the impersonator is no
@@ -76,6 +89,29 @@ async def get_user_from_cookie(signed_cookie: str) -> Optional[dict]:
 
     except BadSignature:
         return None
+
+
+SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30  # 30 days
+
+
+def set_session_cookie(response, user_id: int, password_fp: Optional[str] = None):
+    """Attach the signed session cookie for *user_id* to *response*.
+
+    ``password_fp`` binds a password-issued session to the current password
+    hash (see get_user_from_cookie).
+    """
+    payload = {"v": COOKIE_VERSION, "uid": user_id}
+    if password_fp:
+        payload["pw"] = password_fp
+    response.set_cookie(
+        key=COOKIE_NAME,
+        value=get_cookie_serializer().dumps(payload),
+        httponly=True,
+        max_age=SESSION_MAX_AGE_SECONDS,
+        samesite="lax",
+        secure=COOKIE_SECURE,
+    )
+    return response
 
 
 def _require_allowed(user: dict) -> dict:

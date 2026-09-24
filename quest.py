@@ -27,6 +27,7 @@ from auth import (
     ramp_router,
     service_key_router,
     dev_login_router,
+    password_login_router,
 )
 
 logger = logging.getLogger("quest")
@@ -202,6 +203,17 @@ async def lifespan(app: FastAPI):
     from chat import user_subagent
     user_subagent.set_app_ref(app)
 
+    # Apply admin passwords the prod bootstrap wizard hashed before the
+    # database existed (<data_dir>/pending_admin_passwords.json), then drop
+    # expired/used set-password links. Best-effort.
+    from auth.password_login import apply_pending_admin_passwords
+    from db.password_store import purge_expired_password_tokens
+    try:
+        await apply_pending_admin_passwords(DATA_DIR)
+        await purge_expired_password_tokens()
+    except Exception:
+        logger.exception("Password sign-in startup tasks failed; continuing")
+
     # Start the Slack Socket Mode client (plumbing-only: logs DMs).
     # Guarded so any Slack-side problem cannot prevent the server from booting.
     from chat import slack_socket_mode
@@ -359,6 +371,9 @@ app.include_router(ramp_router)
 # Generic per-user API key routes for plugin services (auth/service_key.py)
 app.include_router(service_key_router)
 app.include_router(dev_login_router)
+# Email/password sign-in (active only when server_config.json login_method
+# is "password"; auth/password_login.py)
+app.include_router(password_login_router)
 
 
 @app.get("/api/instructions")
@@ -534,6 +549,12 @@ async def serve_spa_admin(rest: str):
 async def serve_spa_inbox():
     """Serve SPA for the /inbox deep link (the requests inbox view --
     linked from Slack pending-request reminder DMs)."""
+    return FileResponse(FRONTEND_BUILD_DIR / "index.html")
+
+@app.get("/set-password")
+async def serve_spa_set_password():
+    """Serve SPA for set-password links (invites, sign-up and password
+    resets; the one-time token rides in the URL fragment)."""
     return FileResponse(FRONTEND_BUILD_DIR / "index.html")
 
 # Serve other static files (vite.svg, etc.)

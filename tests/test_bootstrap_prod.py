@@ -1,7 +1,8 @@
 """Tests for the prod first-run bootstrap wizard (scripts/bootstrap_prod.py).
 
 The wizard gates startup on the config a usable prod instance cannot run
-without (admin_emails + Google OAuth), prompts interactively, and writes
+without (admin_emails + a way to sign in: an admin password for password
+sign-in, Google OAuth for Google sign-in), prompts interactively, and writes
 server_config.json, the google_oauth service-credential store file, and the
 Vertex service-account key copy. Non-interactive unconfigured startups must
 abort with instructions instead of launching a server nobody can log into.
@@ -165,6 +166,7 @@ class TestWizard:
             json.dumps({"type": "service_account", "project_id": "otherco-quest"})
         )
         _answers(monkeypatch, [
+            "google",                             # sign-in method
             "ops@otherco.com, eng@otherco.com",  # admin emails
             "",                                   # login domain -> default otherco.com
             "kid@gmail.com, mom@gmail.com",       # additional allowed emails
@@ -208,6 +210,7 @@ class TestWizard:
         monkeypatch.delenv("ANTHROPIC_VERTEX_PROJECT_ID", raising=False)
         monkeypatch.delenv("GEMINI_VERTEX_PROJECT_ID", raising=False)
         _answers(monkeypatch, [
+            "google",            # sign-in method
             "ops@otherco.com",  # admin emails
             "",                  # login domain -> default
             "",                  # additional allowed emails (skip)
@@ -230,6 +233,7 @@ class TestWizard:
         monkeypatch.delenv("ANTHROPIC_VERTEX_PROJECT_ID", raising=False)
         monkeypatch.delenv("GEMINI_VERTEX_PROJECT_ID", raising=False)
         _answers(monkeypatch, [
+            "google",            # sign-in method
             "not-an-email",      # rejected
             "ops@otherco.com",   # accepted
             "", "", "", "", "", "",
@@ -245,6 +249,7 @@ class TestWizard:
         monkeypatch.delenv("ANTHROPIC_VERTEX_PROJECT_ID", raising=False)
         monkeypatch.delenv("GEMINI_VERTEX_PROJECT_ID", raising=False)
         _answers(monkeypatch, [
+            "google",
             "ops@otherco.com",
             "", "", "", "",      # domain default, no extra emails, no public URL, skip oauth
             "",                  # vertex key path (skip)
@@ -252,6 +257,113 @@ class TestWizard:
         ])
         bootstrap_prod.run_wizard(project_root, data_dir)
         assert not bootstrap_prod.llm_configured(project_root)
+
+
+class TestPasswordSignIn:
+    def _config(self, project_root, **extra):
+        (project_root / "server_config.json").write_text(json.dumps({
+            "admin_emails": ["ops@otherco.com"], "login_method": "password", **extra,
+        }))
+
+    def test_password_mode_needs_admin_password(self, deployment):
+        project_root, data_dir = deployment
+        self._config(project_root)
+        missing = bootstrap_prod.missing_required_config(project_root, data_dir)
+        assert len(missing) == 1 and "password for an admin" in missing[0]
+
+    def test_pending_admin_password_counts(self, deployment):
+        project_root, data_dir = deployment
+        self._config(project_root)
+        from config.password_hashing import write_pending_admin_passwords
+        write_pending_admin_passwords(data_dir, {"OPS@otherco.com": "scrypt$1$1$1$x$y"})
+        assert bootstrap_prod.missing_required_config(project_root, data_dir) == []
+
+    def test_database_password_counts(self, deployment):
+        import sqlite3
+        project_root, data_dir = deployment
+        self._config(project_root)
+        conn = sqlite3.connect(data_dir / "quest.db")
+        conn.execute("CREATE TABLE users (email TEXT, password_hash TEXT)")
+        conn.execute("INSERT INTO users VALUES ('ops@otherco.com', 'scrypt$...')")
+        conn.commit()
+        conn.close()
+        assert bootstrap_prod.missing_required_config(project_root, data_dir) == []
+
+    def test_database_without_column_is_tolerated(self, deployment):
+        import sqlite3
+        project_root, data_dir = deployment
+        self._config(project_root)
+        conn = sqlite3.connect(data_dir / "quest.db")
+        conn.execute("CREATE TABLE users (email TEXT)")
+        conn.close()
+        assert len(bootstrap_prod.missing_required_config(project_root, data_dir)) == 1
+
+    def test_password_mode_does_not_need_google_oauth(self, deployment):
+        project_root, data_dir = deployment
+        self._config(project_root)
+        from config.password_hashing import write_pending_admin_passwords
+        write_pending_admin_passwords(data_dir, {"ops@otherco.com": "scrypt$1$1$1$x$y"})
+        assert not bootstrap_prod.google_oauth_configured(project_root, data_dir)
+        assert bootstrap_prod.missing_required_config(project_root, data_dir) == []
+
+    def test_default_wizard_run_sets_up_password_sign_in(self, deployment, monkeypatch):
+        from config.password_hashing import read_pending_admin_passwords, verify_password
+        project_root, data_dir = deployment
+        monkeypatch.delenv("ANTHROPIC_VERTEX_PROJECT_ID", raising=False)
+        monkeypatch.delenv("GEMINI_VERTEX_PROJECT_ID", raising=False)
+        _answers(monkeypatch, [
+            "",                    # sign-in method -> default password
+            "me@gmail.com",        # admin emails
+            "",                    # domain: gmail.com is never suggested -> none
+            "friend@gmail.com",    # additional allowed emails
+            "",                    # public URL (skip)
+            "short",               # admin password: too short, re-prompted
+            "correct horse battery",
+            "mismatch",            # repeat does not match -> re-prompted
+            "correct horse battery",
+            "correct horse battery",
+            "",                    # vertex key path (skip)
+            "",                    # vertex project (skip)
+        ])
+
+        bootstrap_prod.run_wizard(project_root, data_dir)
+
+        config = json.loads((project_root / "server_config.json").read_text())
+        assert config["login_method"] == "password"
+        assert "allowed_login_domain" not in config
+        # The admin is outside any allowed domain, so it is allow-listed.
+        assert config["allowed_login_emails"] == ["friend@gmail.com", "me@gmail.com"]
+        assert not (data_dir / "service_credentials" / "google_oauth.json").exists()
+        pending_file = data_dir / "pending_admin_passwords.json"
+        assert _mode(pending_file) == 0o600
+        pending = read_pending_admin_passwords(data_dir)
+        assert verify_password("correct horse battery", pending["me@gmail.com"])
+        assert bootstrap_prod.missing_required_config(project_root, data_dir) == []
+
+    def test_existing_google_deployment_defaults_to_google(self, deployment, monkeypatch):
+        """A pre-password-sign-in install (Google OAuth configured, no
+        login_method) keeps Google sign-in when the wizard is re-run."""
+        project_root, data_dir = deployment
+        (project_root / "server_config.json").write_text(json.dumps({
+            "admin_emails": ["ops@otherco.com"], "allowed_login_domain": "otherco.com",
+            "app_base_url": "https://q.otherco.com",
+            "anthropic": {"vertex_project_id": "p"},
+        }))
+        store = data_dir / "service_credentials"
+        store.mkdir()
+        (store / "google_oauth.json").write_text(json.dumps({"web": {"client_id": "x"}}))
+        prompts = []
+
+        def _input(prompt=""):
+            prompts.append(prompt)
+            return ""
+
+        monkeypatch.setattr("builtins.input", _input)
+        # Not forced: only the missing sign-in method is asked for.
+        bootstrap_prod.run_wizard(project_root, data_dir)
+        assert any("[google]" in p for p in prompts)
+        config = json.loads((project_root / "server_config.json").read_text())
+        assert config["login_method"] == "google"
 
 
 class TestServerVertexCredentials:

@@ -1,0 +1,152 @@
+/* Settings > Password and Settings > Sign-in (admin). Neutral colours come
+   from the design tokens in index.css so the Settings > Appearance colour
+   theme applies; only the semantic status colours (success green, warning
+   amber, error red) are literal. */
+
+.signin-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-width: 360px;
+}
+
+.signin-row {
+  display: flex;
+  gap: 0.5rem;
+  max-width: 560px;
+}
+
+.signin-input {
+  flex: 1;
+  padding: 0.375rem 0.5rem;
+  border-radius: 4px;
+  border: 1px solid var(--border-strong);
+  background-color: var(--surface-raised);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.875rem;
+}
+
+.signin-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.signin-button {
+  align-self: flex-start;
+  flex-shrink: 0;
+  padding: 0.375rem 0.75rem;
+  border-radius: 4px;
+  border: 1px solid var(--border-strong);
+  background-color: transparent;
+  color: var(--text);
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.signin-button:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.signin-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.signin-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  margin-top: 0.5rem;
+}
+
+.signin-subheading {
+  font-size: 0.9375rem;
+  margin: 1.5rem 0 0.25rem 0;
+}
+
+.signin-status {
+  font-size: 0.875rem;
+  margin: 0.25rem 0;
+}
+
+.signin-status strong {
+  color: var(--text);
+}
+
+.signin-success {
+  font-size: 0.8125rem;
+  color: #81c784;
+  margin: 0.25rem 0;
+}
+
+.signin-warning {
+  font-size: 0.8125rem;
+  color: #ffb74d;
+  margin: 0.25rem 0;
+}
+
+.signin-error {
+  font-size: 0.8125rem;
+  color: #ff6b6b;
+  margin: 0.25rem 0;
+}
+
+.signin-link-box {
+  border: 1px solid rgb(var(--accent-rgb) / 0.5);
+  border-radius: 6px;
+  background-color: rgb(var(--accent-rgb) / 0.08);
+  padding: 0.75rem;
+  margin-top: 0.75rem;
+  max-width: 560px;
+}
+
+.signin-link-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.375rem;
+}
+
+.signin-link {
+  flex: 1;
+  font-family: monospace;
+  font-size: 0.8125rem;
+  color: var(--text);
+  background-color: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  padding: 0.375rem 0.5rem;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.signin-copy-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.signin-copy-btn.copied {
+  color: #81c784;
+  border-color: #81c784;
+}
+
+@media (prefers-color-scheme: light) {
+  .signin-success,
+  .signin-copy-btn.copied {
+    color: #2e7d32;
+    border-color: #2e7d32;
+  }
+
+  .signin-warning {
+    color: #b45309;
+  }
+
+  .signin-error {
+    color: #c62828;
+  }
+}

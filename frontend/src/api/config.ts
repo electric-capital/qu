@@ -163,6 +163,17 @@ export const endpoints = {
   adminUserReport: () => `${API_BASE_URL}/admin/system-monitor/user-report`,
   adminGuidesReport: () => `${API_BASE_URL}/admin/system-monitor/guides-report`,
 
+  adminSignIn: () => `${API_BASE_URL}/admin/sign-in`,
+  adminLoginMethod: () => `${API_BASE_URL}/admin/sign-in/login-method`,
+  adminPasswordLinks: () => `${API_BASE_URL}/admin/sign-in/password-links`,
+
+  // Email/password sign-in (auth/password_login.py; outside /app/api).
+  passwordLogin: () => '/auth/password/login',
+  passwordRequestLink: () => '/auth/password/request-link',
+  passwordLinkInfo: () => '/auth/password/link-info',
+  passwordSet: () => '/auth/password/set',
+  passwordChange: () => '/auth/password/change',
+
   adminFeatureGates: () => `${API_BASE_URL}/admin/feature-gates`,
 
   adminFeatureGate: (feature: string) => `${API_BASE_URL}/admin/feature-gates/${feature}`,

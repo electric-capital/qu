@@ -8,6 +8,7 @@ import { HomeComposer } from './components/HomeComposer'
 import { RightPanel } from './components/RightPanel'
 import { SettingsModal } from './components/SettingsModal'
 import { SignInScreen } from './components/SignInScreen'
+import { SetPasswordScreen } from './components/SetPasswordScreen'
 import { RequestsView } from './components/RequestsView'
 import { AdminSystemReportsPage } from './pages/AdminSystemReportsPage'
 import { MobileShell } from './components/MobileShell'
@@ -193,6 +194,8 @@ function App() {
         <Route path="/chats/:conversationId" element={<AppContent />} />
         <Route path="/projects/:projectId/:conversationId" element={<AppContent />} />
         <Route path="/inbox" element={<AppContent />} />
+        {/* Set-password links (invites, sign-up, resets); works signed out. */}
+        <Route path="/set-password" element={<SetPasswordScreen />} />
         <Route path="/admin/system-reports" element={<AdminSystemReportsRoute />} />
         {/* Legacy deep links from before the "System Reports" rename. */}
         <Route path="/admin/system-monitor" element={<Navigate to="/admin/system-reports" replace />} />

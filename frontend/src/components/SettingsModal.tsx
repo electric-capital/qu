@@ -16,6 +16,8 @@ import {
   FeatureGatesSection,
   ServiceCredentialsSection,
   InferenceProvidersSection,
+  PasswordSection,
+  SignInSection,
   SignOutSection,
   AboutSection,
 } from './settings';
@@ -27,7 +29,7 @@ interface SettingsModalProps {
   onClose: () => void;
 }
 
-type SettingsSection = 'data-connections' | 'appearance' | 'slack' | 'gmail' | 'sms' | 'memories' | 'guides' | 'skills' | 'inference-api' | 'feature-gates' | 'service-credentials' | 'inference-providers' | 'about' | 'sign-out';
+type SettingsSection = 'data-connections' | 'appearance' | 'password' | 'sign-in' | 'slack' | 'gmail' | 'sms' | 'memories' | 'guides' | 'skills' | 'inference-api' | 'feature-gates' | 'service-credentials' | 'inference-providers' | 'about' | 'sign-out';
 
 interface SectionEntry {
   id: SettingsSection;
@@ -41,6 +43,8 @@ const GUIDES_FEATURE = 'guides';
 const MAIN_SECTIONS: SectionEntry[] = [
   { id: 'data-connections', label: 'Data Connections' },
   { id: 'appearance', label: 'Appearance' },
+  // Listed only under email/password sign-in.
+  { id: 'password', label: 'Password' },
   { id: 'memories', label: 'Memories' },
   // Listed only while the admin `guides` feature gate is on for this user.
   { id: 'guides', label: 'Guides' },
@@ -74,6 +78,7 @@ function isConnectorSectionVisible(entry: ConnectorSectionEntry, connectors: Con
 
 // Admin sections are desktop-only: the mobile settings takeover never shows them.
 const ADMIN_SECTIONS: SectionEntry[] = [
+  { id: 'sign-in', label: 'Sign-in' },
   { id: 'feature-gates', label: 'Features' },
   { id: 'service-credentials', label: 'Service Credentials' },
   { id: 'inference-providers', label: 'Inference Providers' },
@@ -90,10 +95,13 @@ const SECTION_LABELS = Object.fromEntries(
 ) as Record<SettingsSection, string>;
 
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
-  const { isAdmin, enabledFeatures, refreshConnectionStatus, loadGuides: refreshContextGuides, settingsInitialSection, setSettingsInitialSection } = useConversationContext();
+  const { isAdmin, enabledFeatures, loginMethod, refreshConnectionStatus, loadGuides: refreshContextGuides, settingsInitialSection, setSettingsInitialSection } = useConversationContext();
   const guidesEnabled = enabledFeatures.includes(GUIDES_FEATURE);
+  const passwordLogin = loginMethod === 'password';
   const visibleMainSections = MAIN_SECTIONS.filter(
-    (entry) => entry.id !== 'guides' || guidesEnabled
+    (entry) =>
+      (entry.id !== 'guides' || guidesEnabled) &&
+      (entry.id !== 'password' || passwordLogin)
   );
   const isMobile = useIsMobile();
   const [activeSection, setActiveSection] = useState<SettingsSection>('data-connections');
@@ -162,7 +170,8 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const isGatedSection = CONNECTOR_SECTIONS.some((entry) => entry.id === activeSection);
   const effectiveSection: SettingsSection =
     (isGatedSection && !isConnectorSectionActive(activeSection)) ||
-    (activeSection === 'guides' && !guidesEnabled)
+    (activeSection === 'guides' && !guidesEnabled) ||
+    (activeSection === 'password' && !passwordLogin)
       ? 'data-connections'
       : activeSection;
 
@@ -215,6 +224,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         return <SkillsSection />;
       case 'inference-api':
         return <InferenceApiSection />;
+      case 'password':
+        return passwordLogin ? <PasswordSection /> : null;
+      case 'sign-in':
+        return isAdmin && !isMobile ? <SignInSection /> : null;
       case 'feature-gates':
         return isAdmin && !isMobile ? <FeatureGatesSection /> : null;
       case 'service-credentials':

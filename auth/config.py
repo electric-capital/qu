@@ -96,6 +96,33 @@ def login_restriction_description() -> str:
         return "approved accounts"
     return f"@{allowed_login_domain()} accounts"
 
+LOGIN_METHOD_GOOGLE = "google"
+LOGIN_METHOD_PASSWORD = "password"
+LOGIN_METHODS = (LOGIN_METHOD_GOOGLE, LOGIN_METHOD_PASSWORD)
+
+
+def login_method() -> str:
+    """The deployment's active sign-in method: "google" or "password".
+
+    Read fresh from the ``login_method`` key in server_config.json on every
+    call so the admin switch (and hand edits) apply without a restart.
+    Unset or unknown values mean "google": deployments that predate
+    password sign-in keep their behavior. Exactly one method is active --
+    the Google login routes refuse to sign anyone in while this is
+    "password", and every password route (plus every password-issued
+    session cookie) is refused while it is "google". Accounts are keyed by
+    email in both, so switching methods keeps every account.
+    """
+    from config.server_config import load_server_config
+
+    value = str(load_server_config().get("login_method") or "").strip().lower()
+    return value if value in LOGIN_METHODS else LOGIN_METHOD_GOOGLE
+
+
+def is_password_login() -> bool:
+    return login_method() == LOGIN_METHOD_PASSWORD
+
+
 # Login scopes - minimal, stable, only for identifying the user
 LOGIN_SCOPES = [
     "openid",

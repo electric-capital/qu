@@ -97,7 +97,22 @@ def _rows(db_path: Path, sql: str) -> list[tuple]:
         conn.close()
 
 
-def _read_back_via_orm(env: dict) -> dict:
+# users columns added by migrations after ENCRYPTION_REV that the current
+# ORM model maps (it SELECTs every mapped column, so the read-back needs
+# them); plain nullable columns, added by hand for the read-back only.
+_LATER_USERS_COLUMNS = (("password_hash", "VARCHAR(255)"),)
+
+
+def _read_back_via_orm(env: dict, db_path: Path) -> dict:
+    conn = sqlite3.connect(db_path)
+    try:
+        existing = {r[1] for r in conn.execute("PRAGMA table_info(users)")}
+        for name, sql_type in _LATER_USERS_COLUMNS:
+            if name not in existing:
+                conn.execute(f"ALTER TABLE users ADD COLUMN {name} {sql_type}")
+        conn.commit()
+    finally:
+        conn.close()
     script = (
         "import asyncio, json\n"
         "from db.user_store import get_user_by_email, get_user_by_api_key, get_user_by_slack_user_id\n"
@@ -148,7 +163,7 @@ def test_migration_encrypts_in_place_with_backup_and_downgrade(deployment):
 
     # The ORM reads plaintext back, looks users up by hash, and resolves the
     # Slack user id from the decrypted blob.
-    read = _read_back_via_orm(env)
+    read = _read_back_via_orm(env, db_path)
     assert read["a"]["api_key"] == "key-a"
     assert read["a"]["google_oauth"] == {"access_token": "g-a"}
     # (telegram_session is checked in SQL above only: the current ORM model

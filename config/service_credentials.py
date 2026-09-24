@@ -59,7 +59,7 @@ LEGACY_TWITTER_CREDENTIALS_FILE = PROJECT_ROOT / "twitter_credentials.json"
 # twitter_credentials.json -- see the special case in
 # read_legacy_service_credentials) still gets it migrated into its store
 # file.
-CORE_SERVICES = ("google_oauth", "ramp", "coingecko")
+CORE_SERVICES = ("google_oauth", "ramp", "coingecko", "smtp")
 
 # The full store roster: core services plus loaded plugins' credential
 # services. Rebound (never mutated) by register_plugin_service() so callers

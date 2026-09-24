@@ -42,9 +42,12 @@ import type {
   MostExpensiveConversationsResponse,
   AdminUserReportResponse,
   AdminGuidesReportResponse,
+  AdminSignInStatus,
   FeatureGate,
   FeatureGatesListResponse,
   FeatureGateUpdate,
+  PasswordLinkInfo,
+  PasswordLinkResult,
   ServiceCredentialsListResponse,
   ServiceCredentialDetail,
   ServiceCredentialUpdate,
@@ -665,6 +668,43 @@ export function fetchAdminUserReport(
 
 export function fetchAdminGuidesReport(): Promise<AdminGuidesReportResponse> {
   return apiGet(endpoints.adminGuidesReport());
+}
+
+export function fetchAdminSignIn(): Promise<AdminSignInStatus> {
+  return apiGet(endpoints.adminSignIn());
+}
+
+export function switchToGoogleSignIn(): Promise<{ login_method: string }> {
+  return apiPut(endpoints.adminLoginMethod(), { body: { login_method: 'google' } });
+}
+
+export function createPasswordLink(email: string, sendEmail: boolean): Promise<PasswordLinkResult> {
+  return apiPost(endpoints.adminPasswordLinks(), { body: { email, send_email: sendEmail } });
+}
+
+// Email/password sign-in. The unauthenticated calls (sign-in screen,
+// set-password page) go through the same helpers: they just carry no
+// session cookie yet, and the server sets one on success.
+export function passwordLogin(email: string, password: string): Promise<{ success: boolean }> {
+  return apiPost(endpoints.passwordLogin(), { body: { email, password } });
+}
+
+export function requestPasswordLink(email: string): Promise<{ success: boolean; message: string }> {
+  return apiPost(endpoints.passwordRequestLink(), { body: { email } });
+}
+
+export function fetchPasswordLinkInfo(token: string): Promise<PasswordLinkInfo> {
+  return apiPost(endpoints.passwordLinkInfo(), { body: { token } });
+}
+
+export function setPasswordWithLink(token: string, password: string, name: string): Promise<{ success: boolean }> {
+  return apiPost(endpoints.passwordSet(), { body: { token, password, name } });
+}
+
+export function changePassword(currentPassword: string, newPassword: string): Promise<{ success: boolean }> {
+  return apiPost(endpoints.passwordChange(), {
+    body: { current_password: currentPassword, new_password: newPassword },
+  });
 }
 
 export function fetchFeatureGates(): Promise<FeatureGatesListResponse> {

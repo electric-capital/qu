@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import './SignInScreen.css';
 import { useConversationContext } from '../contexts/ConversationContext';
+import { passwordLogin, requestPasswordLink } from '../api/client';
 
 interface DevAccount {
   email: string;
@@ -8,8 +9,144 @@ interface DevAccount {
   is_admin: boolean;
 }
 
+function errorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+
+type PasswordView = 'sign-in' | 'request-link' | 'link-sent';
+
+/**
+ * Email + password sign-in (login_method "password"). With outgoing email
+ * configured (`selfService`) the same screen offers "Forgot password?" and
+ * "Create an account", both of which email a one-time set-password link;
+ * without it, users get their link from an admin.
+ */
+function PasswordSignIn({ selfService }: { selfService: boolean }) {
+  const [view, setView] = useState<PasswordView>('sign-in');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const switchView = (next: PasswordView) => {
+    setView(next);
+    setError(null);
+  };
+
+  const handleSignIn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await passwordLogin(email.trim(), password);
+      window.location.reload();
+    } catch (err) {
+      setError(errorMessage(err, 'Sign-in failed.'));
+      setBusy(false);
+    }
+  };
+
+  const handleRequestLink = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await requestPasswordLink(email.trim());
+      setNotice(result.message);
+      switchView('link-sent');
+    } catch (err) {
+      setError(errorMessage(err, 'Could not send the link.'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (view === 'link-sent') {
+    return (
+      <div className="password-sign-in">
+        <p className="password-notice">{notice}</p>
+        <button type="button" className="sign-in-link-button" onClick={() => switchView('sign-in')}>
+          Back to sign in
+        </button>
+      </div>
+    );
+  }
+
+  if (view === 'request-link') {
+    return (
+      <form className="password-sign-in" onSubmit={handleRequestLink}>
+        <p className="password-help">
+          Enter your email address. We'll send a link to set your password: it
+          resets the password of an existing account, or creates your account if
+          you don't have one yet.
+        </p>
+        {error && <p className="sign-in-error">{error}</p>}
+        <input
+          type="email"
+          className="dev-login-input"
+          placeholder="Email address"
+          autoComplete="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          required
+          autoFocus
+        />
+        <button type="submit" className="sign-in-button password-submit" disabled={busy}>
+          {busy ? 'Sending...' : 'Email me a link'}
+        </button>
+        <button type="button" className="sign-in-link-button" onClick={() => switchView('sign-in')}>
+          Back to sign in
+        </button>
+      </form>
+    );
+  }
+
+  return (
+    <form className="password-sign-in" onSubmit={handleSignIn}>
+      {error && <p className="sign-in-error">{error}</p>}
+      <input
+        type="email"
+        className="dev-login-input"
+        placeholder="Email address"
+        autoComplete="username"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        required
+        autoFocus
+      />
+      <input
+        type="password"
+        className="dev-login-input"
+        placeholder="Password"
+        autoComplete="current-password"
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+        required
+      />
+      <button type="submit" className="sign-in-button password-submit" disabled={busy}>
+        {busy ? 'Signing in...' : 'Sign in'}
+      </button>
+      {selfService ? (
+        <div className="password-links">
+          <button type="button" className="sign-in-link-button" onClick={() => switchView('request-link')}>
+            Forgot password?
+          </button>
+          <button type="button" className="sign-in-link-button" onClick={() => switchView('request-link')}>
+            Create an account
+          </button>
+        </div>
+      ) : (
+        <p className="password-help">
+          Forgot your password or need an account? Ask an administrator for a sign-in link.
+        </p>
+      )}
+    </form>
+  );
+}
+
 export function SignInScreen() {
-  const { appName, isDevMode, loginRestriction } = useConversationContext();
+  const { appName, isDevMode, loginRestriction, loginMethod, passwordSelfService } = useConversationContext();
   const [authUrl, setAuthUrl] = useState<string | null>(null);
   const [googleUnavailable, setGoogleUnavailable] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -18,6 +155,8 @@ export function SignInScreen() {
   const [devAccounts, setDevAccounts] = useState<DevAccount[]>([]);
 
   useEffect(() => {
+    // Google sign-in only; wait for the config fetch to say which method.
+    if (loginMethod !== 'google') return;
     const fetchLoginUrl = async () => {
       try {
         const response = await fetch('/auth/login-url', { credentials: 'include' });
@@ -34,7 +173,7 @@ export function SignInScreen() {
       }
     };
     fetchLoginUrl();
-  }, []);
+  }, [loginMethod]);
 
   // Local mode: fetch the canned-account roster for one-click login.
   useEffect(() => {
@@ -88,7 +227,11 @@ export function SignInScreen() {
         <h1 className="sign-in-title">{appName}</h1>
         <p className="sign-in-subtitle">AI-powered assistant</p>
         {error && <p className="sign-in-error">{error}</p>}
-        {authUrl ? (
+        {loginMethod === null ? (
+          <p className="sign-in-loading">Loading...</p>
+        ) : loginMethod === 'password' ? (
+          <PasswordSignIn selfService={passwordSelfService} />
+        ) : authUrl ? (
           <a href={authUrl} className="sign-in-button">
             Sign in with Google
           </a>

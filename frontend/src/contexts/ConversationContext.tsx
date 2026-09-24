@@ -48,6 +48,8 @@ interface FileBrowserState {
   historyIndex: number;
 }
 
+export type LoginMethod = 'google' | 'password';
+
 interface ConversationContextValue {
   activeConversationId: string | null;
   setActiveConversationId: (id: string | null) => void;
@@ -63,6 +65,17 @@ interface ConversationContextValue {
   // email whitelist. Defaults to the built-in company domain until the
   // config fetch resolves; shown on the sign-in screen.
   loginRestriction: string;
+  // Active sign-in method (GET /app/api/config): "google" (Google OAuth) or
+  // "password" (email + password accounts). Exactly one is active. null
+  // until the config fetch resolves.
+  loginMethod: LoginMethod | null;
+  // Password sign-in only: whether the sign-in screen can offer self-service
+  // sign-up / forgot-password (the server has outgoing email configured).
+  passwordSelfService: boolean;
+  // Whether the signed-in account has a sign-in password (GET /me); the
+  // Settings > Password section asks for the current one when it does.
+  hasPassword: boolean;
+  setHasPassword: (value: boolean) => void;
   // Model IDs whose backend credentials are configured server-side (from
   // GET /app/api/config). null until the config fetch resolves; treat null
   // as "all models" so the picker doesn't flicker empty on load.
@@ -313,6 +326,11 @@ export function ConversationProvider({ children }: ConversationProviderProps) {
   const [appName, setAppName] = useState("Quest");
   const [isDevMode, setIsDevMode] = useState(false);
   const [loginRestriction, setLoginRestriction] = useState("approved accounts");
+  // null until the config fetch resolves, so the sign-in screen does not
+  // flash the wrong form.
+  const [loginMethod, setLoginMethod] = useState<LoginMethod | null>(null);
+  const [passwordSelfService, setPasswordSelfService] = useState(false);
+  const [hasPassword, setHasPassword] = useState(false);
   const [availableModelIds, setAvailableModelIds] = useState<string[] | null>(null);
   // Ref mirror of availableModelIds plus the in-flight config fetch, so async
   // default-model resolution (initial /me hydration, refreshDefaultModel) can
@@ -348,9 +366,15 @@ export function ConversationProvider({ children }: ConversationProviderProps) {
             // Older backends only send the domain.
             setLoginRestriction(`@${data.allowed_login_domain} accounts`);
           }
+          // Older backends have no login_method: Google sign-in.
+          setLoginMethod(data.login_method === 'password' ? 'password' : 'google');
+          setPasswordSelfService(data.password_self_service === true);
+        } else {
+          setLoginMethod('google');
         }
       } catch {
         // Config fetch failed; keep default "Quest"
+        setLoginMethod('google');
       }
     };
     configFetchRef.current = doFetchConfig();
@@ -379,6 +403,7 @@ export function ConversationProvider({ children }: ConversationProviderProps) {
         setHasAnyServiceConnected(userInfo.has_any_service_connected);
         setIsAdmin(userInfo.is_admin);
         setEnabledFeatures(userInfo.enabled_features ?? []);
+        setHasPassword(userInfo.has_password === true);
         // The server-stored theme wins over the localStorage cache (which
         // only exists to avoid a pre-paint flash on this device).
         const serverTheme = normalizeTheme(userInfo.theme);
@@ -677,6 +702,10 @@ export function ConversationProvider({ children }: ConversationProviderProps) {
     appName,
     isDevMode,
     loginRestriction,
+    loginMethod,
+    passwordSelfService,
+    hasPassword,
+    setHasPassword,
     availableModelIds,
     defaultModel,
     setDefaultModel,
@@ -742,6 +771,10 @@ export function ConversationProvider({ children }: ConversationProviderProps) {
     appName,
     isDevMode,
     loginRestriction,
+    loginMethod,
+    passwordSelfService,
+    hasPassword,
+    setHasPassword,
     availableModelIds,
     defaultModel,
     setDefaultModel,
