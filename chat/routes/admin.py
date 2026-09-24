@@ -9,8 +9,8 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from chat.auth import get_current_user_cookie_or_apikey_checked, is_admin
-from auth.config import COOKIE_NAME, COOKIE_SECURE, COOKIE_VERSION
-from auth.session import get_cookie_serializer, get_user_from_cookie
+from auth.config import COOKIE_NAME, COOKIE_SECURE, COOKIE_VERSION, is_password_login
+from auth.session import get_cookie_serializer, get_user_from_cookie, set_session_cookie
 from chat.storage import ChatStorage
 from db.conversation_store import (
     get_conversations_with_users,
@@ -1301,19 +1301,172 @@ async def admin_stop_impersonation(
         user["email"],
     )
 
-    # Create a normal (non-impersonation) cookie for the admin
-    signed_payload = get_cookie_serializer().dumps({
-        "v": COOKIE_VERSION,
-        "uid": impersonator_uid,
-    })
+    # Create a normal (non-impersonation) cookie for the admin. Under
+    # password sign-in it is bound to the admin's password again, exactly
+    # like the cookie they signed in with.
+    password_fp = None
+    if is_password_login():
+        admin_user = await get_user_by_id(impersonator_uid)
+        password_fp = (admin_user or {}).get("password_fp")
+    return set_session_cookie(JSONResponse({"success": True}), impersonator_uid, password_fp)
 
-    response = JSONResponse({"success": True})
-    response.set_cookie(
-        key=COOKIE_NAME,
-        value=signed_payload,
-        httponly=True,
-        max_age=60 * 60 * 24 * 30,  # 30 days (normal session)
-        samesite="lax",
-        secure=COOKIE_SECURE,
+
+# ---------------------------------------------------------------------------
+# Sign-in method + email/password account management
+# ---------------------------------------------------------------------------
+
+def _google_login_configured() -> bool:
+    from auth.config import load_client_config
+    try:
+        config = load_client_config()
+    except HTTPException:
+        return False
+    return bool(config.get("client_id") and config.get("client_secret"))
+
+
+@router.get("/admin/sign-in")
+async def admin_get_sign_in(
+    user: dict = Depends(get_current_user_cookie_or_apikey_checked),
+):
+    """Sign-in method status for the admin Settings > Sign-in section."""
+    _require_admin(user)
+    from auth.config import login_method
+    from auth.mailer import smtp_configured
+    return {
+        "login_method": login_method(),
+        "google_oauth_configured": _google_login_configured(),
+        "smtp_configured": smtp_configured(),
+    }
+
+
+class LoginMethodUpdate(BaseModel):
+    login_method: str
+
+
+@router.put("/admin/sign-in/login-method")
+async def admin_set_login_method(
+    body: LoginMethodUpdate,
+    user: dict = Depends(get_current_user_cookie_or_apikey_checked),
+):
+    """Switch the deployment from password sign-in to Google sign-in.
+
+    One-way from the UI: accounts are keyed by email, so every user keeps
+    their account and signs in with the Google account of the same address.
+    Password-issued sessions end immediately (see get_user_from_cookie).
+    Requires Google OAuth client credentials so the switch cannot lock
+    everyone out; going back to password sign-in is a deliberate
+    server_config.json edit (``"login_method": "password"``).
+    """
+    _require_admin(user)
+    from auth.config import LOGIN_METHOD_GOOGLE, login_method
+    from config.server_config import update_server_config
+
+    if body.login_method != LOGIN_METHOD_GOOGLE:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "unsupported_switch",
+                "message": 'Only switching to Google sign-in is supported here. To go back '
+                           'to password sign-in, set "login_method": "password" in '
+                           'server_config.json.',
+            },
+        )
+    if login_method() == LOGIN_METHOD_GOOGLE:
+        return {"login_method": LOGIN_METHOD_GOOGLE}
+    if not _google_login_configured():
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "google_oauth_not_configured",
+                "message": "Configure the Google OAuth client under Service Credentials first.",
+            },
+        )
+    update_server_config({"login_method": LOGIN_METHOD_GOOGLE})
+    logger.warning("[admin] %s switched the sign-in method to Google", user["email"])
+    return {"login_method": LOGIN_METHOD_GOOGLE}
+
+
+class PasswordLinkRequest(BaseModel):
+    email: str
+    send_email: bool = False
+
+
+@router.post("/admin/sign-in/password-links")
+async def admin_create_password_link(
+    body: PasswordLinkRequest,
+    request: Request,
+    user: dict = Depends(get_current_user_cookie_or_apikey_checked),
+):
+    """Issue a set-password link: invites a new user or resets an existing
+    user's password. The link is returned for the admin to hand over and,
+    when asked and outgoing email is configured, also emailed.
+
+    An address outside the admission policy is added to
+    ``allowed_login_emails`` in server_config.json: inviting someone is how
+    an admin grants them access on a password deployment.
+    """
+    _require_admin(user)
+    from auth.config import allowed_login_emails
+    from auth.mailer import MailerError, send_email, smtp_configured
+    from auth.password_login import (
+        invite_email_body,
+        is_valid_email,
+        issue_password_link,
+        normalize_email,
     )
-    return response
+    from chat.auth import check_user_allowed
+    from config.server_config import load_server_config, update_server_config
+    from db.user_store import get_user_by_email
+
+    if not is_password_login():
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "password_login_disabled",
+                "message": "Password sign-in is not enabled on this deployment.",
+            },
+        )
+    email = normalize_email(body.email)
+    if not is_valid_email(email):
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "invalid_email", "message": "Enter a valid email address."},
+        )
+
+    added_to_allowed = False
+    if not check_user_allowed(email):
+        raw = load_server_config().get("allowed_login_emails")
+        current = list(raw) if isinstance(raw, list) else []
+        if email not in allowed_login_emails():
+            update_server_config({"allowed_login_emails": current + [email]})
+        added_to_allowed = True
+        logger.info("[admin] %s added %s to allowed_login_emails", user["email"], email)
+
+    account_exists = await get_user_by_email(email) is not None
+    url, _ = await issue_password_link(request, email, "invite")
+    logger.info(
+        "[admin] %s issued a set-password link for %s (%s)",
+        user["email"], email, "reset" if account_exists else "invite",
+    )
+
+    emailed = False
+    email_error = None
+    if body.send_email:
+        if not smtp_configured():
+            email_error = "Outgoing email (SMTP) is not configured."
+        else:
+            subject, text = invite_email_body(url, account_exists)
+            try:
+                await send_email(email, subject, text)
+                emailed = True
+            except MailerError as exc:
+                email_error = str(exc)
+
+    return {
+        "email": email,
+        "url": url,
+        "account_exists": account_exists,
+        "emailed": emailed,
+        "email_error": email_error,
+        "added_to_allowed_emails": added_to_allowed,
+    }

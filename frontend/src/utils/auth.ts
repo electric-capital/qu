@@ -22,6 +22,8 @@ export async function checkSession(): Promise<{
   // null = default (prototype).
   color_theme?: string | null;
   enabled_features?: string[];
+  // Whether the account has an email/password sign-in password.
+  has_password?: boolean;
 } | null> {
   try {
     const response = await fetch('/app/api/me', {

@@ -32,19 +32,35 @@ wizard (`scripts/bootstrap_prod.py`, stdlib-only like `run.py`) before any
 build step. "Unconfigured" means missing either of the two hard prerequisites
 a usable instance cannot run without: `admin_emails` in `server_config.json`
 (without it nobody can reach the admin UI, including Settings > Service
-Credentials) or Google OAuth client credentials (without them nobody can sign
-in). See `missing_required_config()`.
+Credentials) or a way to sign in, which depends on the `login_method` key (see
+[Sign-in Methods](../architecture/auth.md#sign-in-methods)): for `"password"`
+a password for at least one admin account (found in the pending-passwords file
+or, via stdlib `sqlite3`, in `users.password_hash`); for `"google"` -- also what
+an absent key means -- Google OAuth client credentials. See
+`missing_required_config()`.
 
-The wizard prompts for admin emails, the allowed login domain (plus optional
-additional individual allowed emails), the public
+The wizard first asks for the sign-in method. Its default is `password` (no
+setup outside Quest -- the easy way to try Quest out), except on a deployment
+that already has Google OAuth credentials but no `login_method` (an install that
+predates password sign-in), where it is `google`. It then prompts for admin
+emails and the allowed login domain (public mailbox domains such as gmail.com
+are never suggested, see `PUBLIC_EMAIL_DOMAINS`), plus optional additional
+individual allowed emails. Admins outside the allowed domain are appended to
+`allowed_login_emails` automatically so they can always sign in. Next come the public
 URL the deployment is accessed through (`app_base_url`, used for OAuth
 callback URLs and app-generated absolute links; a bare hostname answer gets
 `https://` prepended, and a legacy `oauth_hostname` seeds the default on
-re-runs), Google OAuth client id/secret (printing both
-redirect URIs to register), and LLM credentials (a GCP service-account key
+re-runs), then either the admin passwords (password sign-in: hidden, entered twice,
+checked against `password_problem()`; at least one admin needs one) or the Google
+OAuth client id/secret (Google sign-in, printing both redirect URIs to register),
+and LLM credentials (a GCP service-account key
 file + Vertex project id; all models run on Vertex AI). It writes
-`server_config.json` (merging, preserving unrelated keys), the
-`google_oauth` per-service credential store file, and a key copy at
+`server_config.json` (merging, preserving unrelated keys, incl. `login_method`),
+the `google_oauth` per-service credential store file, for password sign-in
+`<data_dir>/pending_admin_passwords.json` (0600, scrypt hashes from
+`config/password_hashing.py` -- the database does not exist yet, so the server
+lifespan applies the hashes via `apply_pending_admin_passwords()` in
+`auth/password_login.py` and deletes the file), and a key copy at
 `<data_dir>/vertex-service-account.json` that `run.py` exports as
 `GOOGLE_APPLICATION_CREDENTIALS` in staging/prod
 (`setup_server_vertex_credentials()`), so no manual env-var setup is needed.
@@ -65,7 +81,10 @@ instead of starting a server nobody can log into; `QUEST_SKIP_BOOTSTRAP=1`
 starts anyway. `python run.py --prod --bootstrap` re-runs the wizard on an
 already-configured deployment with existing values as prompt defaults.
 Connectors not covered by the wizard (Slack, GitHub, Twitter/X, Ramp, CoinGecko) are
-configured after first login by an admin in Settings > Service Credentials.
+configured after first login by an admin in Settings > Service Credentials. On a
+password deployment that includes outgoing email (SMTP, for self-service password
+resets and sign-up) and, whenever wanted, the Google OAuth client (Google services
+connectors, and the later switch to Google sign-in from Settings > Sign-in).
 
 ## Route Priority
 
@@ -90,7 +109,8 @@ Static assets (`/assets/*`, `/vite.svg`): no authentication.
 `server_config.json` options:
 - `admin_emails`: email addresses for admin users (case-insensitive check in `is_admin()` in `chat/auth.py`). Admins see AdminOpsMenu in frontend
 - `allowed_login_domain`: email domain allowed to sign in (default: the built-in company domain -- see `allowed_login_domain()` in `auth/config.py`). Set by the bootstrap wizard so deployments for other organizations can admit their own domain
-- `allowed_login_emails`: optional list of individual email addresses allowed to sign in in addition to the domain (see `is_login_allowed()` in `auth/config.py`), for accounts outside any single domain -- e.g. personal `@gmail.com` users on a family deployment. Also prompted by the bootstrap wizard
+- `allowed_login_emails`: optional list of individual email addresses allowed to sign in in addition to the domain (see `is_login_allowed()` in `auth/config.py`), for accounts outside any single domain -- e.g. personal `@gmail.com` users on a family deployment. Also prompted by the bootstrap wizard, and appended to by admin invite links on password deployments
+- `login_method`: `"password"` (email + password accounts) or `"google"` (Google OAuth; also what an absent key means). Exactly one method is active. Written by the bootstrap wizard and by the admin switch to Google sign-in; see [Sign-in Methods](../architecture/auth.md#sign-in-methods)
 - `model`, `anthropic.*`, `gemini_vertex.*`: same as development. See [Development Setup](development.md) for details
 
 Production-specific: use a service account with Vertex AI API access for ADC (rather than `gcloud auth application-default login`). The same ADC credentials serve both Anthropic Vertex AI and Vertex-backed Gemini models. A key file at `<data_dir>/vertex-service-account.json` (written by the bootstrap wizard) is exported as `GOOGLE_APPLICATION_CREDENTIALS` automatically by `run.py` in staging/prod; an externally-set env var wins.

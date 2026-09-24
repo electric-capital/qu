@@ -1300,3 +1300,28 @@ export interface RoutineScheduleSummary {
   is_running: boolean;
   last_run_completed_at: string | null;
 }
+
+// Settings > Sign-in (admin): GET /admin/sign-in
+export interface AdminSignInStatus {
+  login_method: 'google' | 'password';
+  google_oauth_configured: boolean;
+  smtp_configured: boolean;
+}
+
+// POST /admin/sign-in/password-links
+export interface PasswordLinkResult {
+  email: string;
+  url: string;
+  account_exists: boolean;
+  emailed: boolean;
+  email_error: string | null;
+  added_to_allowed_emails: boolean;
+}
+
+// POST /auth/password/link-info
+export interface PasswordLinkInfo {
+  email: string;
+  purpose: 'invite' | 'reset';
+  account_exists: boolean;
+  name: string;
+}

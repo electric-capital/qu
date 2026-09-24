@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from db.user_store import get_user_by_email, create_user, update_user_field
-from auth.config import COOKIE_NAME, COOKIE_SECURE, COOKIE_VERSION, generate_api_key, is_login_allowed, login_restriction_description, oauth_base_url
+from auth.config import COOKIE_NAME, COOKIE_SECURE, COOKIE_VERSION, generate_api_key, is_login_allowed, is_password_login, login_restriction_description, oauth_base_url
 from auth.oauth_state import clear_oauth_state, mint_oauth_state, verify_oauth_state
 from auth.session import get_cookie_serializer
 from auth.google_credentials import get_login_oauth_flow, get_valid_credentials
@@ -50,9 +50,22 @@ async def reset_api_key(request: Request):
     return RedirectResponse("/auth/", status_code=303)
 
 
+def _google_login_disabled() -> HTTPException:
+    """Google sign-in is off while the deployment uses password sign-in."""
+    return HTTPException(
+        status_code=404,
+        detail={
+            "error": "google_login_disabled",
+            "message": "This deployment uses email and password sign-in.",
+        },
+    )
+
+
 @router.get("/login-url")
 async def get_login_url(request: Request):
     """Return the Google OAuth login URL for the frontend sign-in screen."""
+    if is_password_login():
+        raise _google_login_disabled()
     base_url = oauth_base_url(request)
     redirect_uri = f"{base_url}/auth/callback"
 
@@ -74,6 +87,9 @@ async def get_login_url(request: Request):
 @router.get("/", response_class=HTMLResponse)
 async def auth_page(request: Request, force: Optional[str] = None):
     """Redirect to / if authenticated, or show sign-in page."""
+    if is_password_login():
+        # The SPA's sign-in screen hosts the password form.
+        return RedirectResponse("/")
     base_url = oauth_base_url(request)
 
     # Check for existing session (unless force re-auth)
@@ -160,6 +176,21 @@ async def auth_callback(
     error: str = None,
 ):
     """OAuth callback handler for app login."""
+    if is_password_login():
+        # Exactly one sign-in method is active: a callback minted before an
+        # admin switch (or crafted by hand) must not open a session.
+        resp = HTMLResponse("""
+        <!DOCTYPE html>
+        <html>
+        <head><title>Quest - Error</title></head>
+        <body style="font-family: sans-serif; max-width: 600px; margin: 50px auto; padding: 20px;">
+            <h1>Google sign-in is disabled</h1>
+            <p>This deployment uses email and password sign-in.</p>
+            <p><a href="/">Go to the sign-in page</a></p>
+        </body>
+        </html>
+        """, status_code=404)
+        return clear_oauth_state(resp, _STATE_COOKIE)
     if error:
         return HTMLResponse(f"""
         <!DOCTYPE html>

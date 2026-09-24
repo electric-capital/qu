@@ -14,8 +14,34 @@ The main app in `quest.py` registers the routers from the auth submodule:
 2. `google_services_router` -- Google Services OAuth (`/auth/google-services`, `/auth/google-services/callback`)
 3. `airtable_router` -- Airtable token management (`/auth/airtable/save-token`, `/auth/airtable/remove-token`)
 4. `dev_login_router` -- Dev-only email login (`POST /auth/dev-login`)
+5. `password_login_router` -- Email/password sign-in (`/auth/password/*`, see Sign-in Methods below)
 
 Plugin OAuth routers (e.g. the Slack plugin's `/auth/slack`, `/auth/slack/callback`, `/auth/slack/disconnect`, the GitHub plugin's `/auth/github/*`, the Twitter/X plugin's `/auth/twitter`, `/auth/twitter/callback`, `/auth/twitter/disconnect`, and the Telegram plugin's non-OAuth login router `/auth/telegram`, `/auth/telegram/send-code`, `/auth/telegram/verify`, `/auth/telegram/2fa`, `/auth/telegram/disconnect`) are mounted separately by `mount_plugin_oauth_routers()` in quest.py after plugin load -- see [Plugin Architecture](plugins.md).
+
+## Sign-in Methods
+
+A deployment signs users in with exactly one of two methods, chosen by the `login_method` key in `server_config.json` and read fresh on every call by `login_method()` / `is_password_login()` in `auth/config.py`:
+
+- `"google"` -- Google OAuth (`auth/google_login.py`). Also what an absent or unknown value means, so deployments that predate password sign-in are unchanged.
+- `"password"` -- email + password accounts (`auth/password_login.py`). The prod bootstrap wizard's default for new deployments because it needs nothing set up outside Quest (see [Production](../setup/production.md#first-run-bootstrap)).
+
+Enforcement of "one method at a time": every `/auth/password/*` route 404s `password_login_disabled` unless the method is password; under password sign-in `/auth/login-url` 404s `google_login_disabled`, `/auth/callback` renders a 404 error page, and the `/auth/` HTML page redirects to the SPA. Password-issued session cookies carry a `pw` field (see Session binding below) and `get_user_from_cookie()` in `auth/session.py` rejects them whenever the method is not password. The Google Services connector flow (`auth/google_services.py`) is independent of the sign-in method and works under both.
+
+**Accounts are the same `users` rows under both methods, keyed by email.** The Google login callback already looks users up by email, so after a switch everyone signs in with the Google account of the same address and keeps their conversations, projects and connections; `google_sub` is filled in on that first Google login. Password hashes stay in place after a switch (unused), so reverting only takes a config edit.
+
+**Switching.** Admin Settings > Sign-in (`frontend/src/components/settings/SignInSection.tsx`) calls `PUT /app/api/admin/sign-in/login-method` (`chat/routes/admin.py`), which only accepts `"google"`, refuses until the Google OAuth client is configured (`_google_login_configured()`), and writes the key via `update_server_config()` in `config/server_config.py` (atomic temp-file + rename, other keys preserved). Password sessions -- including the admin's own -- end immediately. Going back to password sign-in is deliberately a hand edit of `server_config.json` (`"login_method": "password"`); Google-issued sessions (no `pw` field) stay valid then, and users without a password can set one in Settings > Password without a current password.
+
+### Email/password flow
+
+Key files: `auth/password_login.py` (routes, rate limiting, startup hook), `config/password_hashing.py` (stdlib-only scrypt hashing, password policy, fingerprints, and the bootstrap pending-passwords file), `db/password_store.py` (hash + token data access), `auth/mailer.py` (SMTP), `frontend/src/components/SignInScreen.tsx` (`PasswordSignIn`), `frontend/src/components/SetPasswordScreen.tsx`, `frontend/src/components/settings/PasswordSection.tsx`.
+
+- **Storage.** `users.password_hash` (nullable; `scrypt$n$r$p$salt$hash`, parameters carried in the string so costs can rise later) and the `password_tokens` table (one-time set-password links keyed by lowercased email, SHA-256 of the raw token only, purpose `invite`/`reset`, expiry, `used_at`). Migration `e5b2c8f14a37`. The hash never rides on user dicts -- `User.to_dict()` exposes only `password_fp`, a 16-hex-char fingerprint of it.
+- **Passwords are only ever set through a one-time link** (`POST /auth/password/set`), which creates the account when missing (optional display name, default derived from the email) and signs the user in. Links come from: an admin (`POST /app/api/admin/sign-in/password-links`: 7-day `invite` link returned for the admin to hand over and optionally emailed; an address outside the admission policy is appended to `allowed_login_emails`, since inviting is how an admin grants access on a password deployment); self-service `POST /auth/password/request-link` (1-hour `reset` link, emailed in a background task -- for an address with no account this is sign-up, and receiving the email proves ownership; requires SMTP, answers the same generic message whether or not the address may sign in); and the bootstrap wizard for the first admins (`apply_pending_admin_passwords()`, run from the `quest.py` lifespan, which also purges stale tokens).
+- **The link token travels in the URL fragment** (`/set-password#token=...`, built by `set_password_url()` on `oauth_base_url()`), so it never reaches server access logs or Referer headers; the page posts it to `POST /auth/password/link-info` / `/auth/password/set` in JSON bodies. `quest.py` serves the SPA at `/set-password`, routed to `SetPasswordScreen` outside the auth gate in `frontend/src/App.tsx`. Using a link or setting a new password voids every other outstanding link for the address (`set_password_hash()`), and consumption is an atomic conditional UPDATE.
+- **Sign-in.** `POST /auth/password/login` verifies in a worker thread; unknown accounts spend the same scrypt time (`burn_verify_time()`) and get the same 401 `invalid_credentials` as a wrong password. In-memory sliding-window limits (`_SlidingWindow`): 10 failures per account and 50 per client IP per 15 minutes (429 `rate_limited`), one link email per address per minute and 10 link requests per IP per 15 minutes. Limits are per process and reset on restart. The admission policy (`check_user_allowed()`) is applied on login and on link use exactly as on every request.
+- **Session binding.** `set_session_cookie()` in `auth/session.py` puts the password fingerprint into the cookie (`pw`). Because each hash has a fresh salt, a password change or reset signs out every session issued under the old password. `POST /auth/password/change` (current password required when one is set; refused while impersonating) re-issues the caller's cookie. Stop-impersonation re-binds the admin's restored cookie the same way.
+- **Outgoing email** is optional: the core `smtp` credential service (`config/service_specs.py`, admin Settings > Service Credentials > "Outgoing email (SMTP)": host, port, implicit TLS, username/password, from address). `auth/mailer.py` sends plain-text mail via `smtplib` in a thread, upgrades with STARTTLS when offered, and refuses to send credentials over an unencrypted connection. `GET /app/api/config` reports `login_method` and `password_self_service` (SMTP configured) so the sign-in screen shows either "Forgot password? / Create an account" or "ask an administrator for a sign-in link".
+- `GET /app/api/me` returns `has_password`, and Settings > Password is listed only under password sign-in.
 
 ## OAuth State Cookies
 
@@ -140,10 +166,18 @@ The cross-user variant of this (an attacker-minted callback URL replayed in a vi
 **Why do `get_valid_credentials()` and `get_valid_service_credentials()` mutate the `user` dict in-place?**
 Within a single WebSocket session, the same `user` dict is passed to multiple API calls. If a token refresh writes the new token to the database but does not update the in-memory `user` dict, subsequent calls in the same session still see the stale expired token and trigger redundant refreshes to Google. Mutating `user["google_oauth"]` (or `user["google_services_oauth"]`) in-place after each refresh ensures all downstream callers in the same session see the fresh token immediately.
 
+**Why only one sign-in method at a time?**
+Running both would give every account two independent credentials with different recovery paths and make "who may sign in" depend on which door someone used. A single switch also makes the Google transition a clean cutover: password sessions end, and the Google callback resolves the same rows by email.
+
+**Why are passwords only set through one-time links, never at sign-up?**
+Without a link that proves control of the address, anyone could register an allowed-domain email before its owner -- including an address in `admin_emails`. Admin-issued links (and the bootstrap wizard for the first admins) work without any email setup; self-service links rely on SMTP delivery for the ownership proof.
+
+**Why scrypt from `hashlib` instead of a password-hashing package?**
+The bootstrap wizard must hash the first admin password before any dependency is installed (it is stdlib-only like `run.py`), and the app must verify the same format. `hashlib.scrypt` is memory-hard and available everywhere Python links OpenSSL.
+
 ## Constraints
 
 - The `auth/` submodule handles only authentication, authorization, and credential management. API endpoint logic (Gmail, Airtable, etc.) remains in the `api/` directory (GitHub, Slack, Twitter/X and Telegram access is plugin-provided -- see [Plugins](plugins.md)). Plugin oauth-kind connection routers (e.g. the GitHub plugin's `/auth/github` flow) are mounted separately by `mount_plugin_oauth_routers()` after plugin load.
 - `quest.py` still contains the `/api/instructions` endpoint, the `/api/reset-api-key` endpoint, and static file serving. Instruction functions (`get_instructions_content()`, `get_user_connected_services()`) and per-service instruction text have been extracted to the `api/` package (see `api/instructions.py` and the `get_instructions()` functions in each API submodule).
-- The nine auth routers must be registered before API routes and catch-all static routes in the main app to ensure correct route priority.
+- The ten auth routers must be registered before API routes and catch-all static routes in the main app to ensure correct route priority.
 - The dev login endpoint (`/auth/dev-login`) is only functional when `QUEST_ENV=dev`. In all other environments it returns 404.
-

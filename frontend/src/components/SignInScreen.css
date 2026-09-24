@@ -57,6 +57,58 @@
   font-size: 0.875rem;
 }
 
+.password-sign-in {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  width: 320px;
+  max-width: 100%;
+  margin: 0 auto;
+  text-align: left;
+}
+
+.password-submit {
+  border: none;
+  cursor: pointer;
+  text-align: center;
+}
+
+.password-submit:disabled {
+  background-color: rgba(66, 133, 244, 0.5);
+  cursor: not-allowed;
+}
+
+.password-links {
+  display: flex;
+  justify-content: space-between;
+}
+
+.sign-in-link-button {
+  align-self: center;
+  padding: 0;
+  border: none;
+  background: none;
+  color: #6ea8fe;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.sign-in-link-button:hover {
+  text-decoration: underline;
+}
+
+.password-help,
+.password-notice {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.password-notice {
+  color: rgba(255, 255, 255, 0.8);
+}
+
 .dev-login-section {
   margin-top: 1.5rem;
 }
@@ -232,6 +284,18 @@
     color: rgba(0, 0, 0, 0.35);
   }
 
+  .password-help {
+    color: rgba(0, 0, 0, 0.55);
+  }
+
+  .password-notice {
+    color: rgba(0, 0, 0, 0.8);
+  }
+
+  .sign-in-link-button {
+    color: #1a73e8;
+  }
+
   .dev-account-button {
     border-color: rgba(0, 0, 0, 0.2);
     background-color: rgba(0, 0, 0, 0.03);
@@ -246,4 +310,8 @@
   .dev-account-email {
     color: rgba(0, 0, 0, 0.45);
   }
+}
+
+.password-sign-in .dev-login-input:focus {
+  border-color: #4285f4;
 }

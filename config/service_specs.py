@@ -185,6 +185,55 @@ _register_core(ServiceSpec(
 ))
 
 
+
+def _validate_smtp(values: dict) -> dict:
+    port = str(values.get("port") or "").strip()
+    if port and (not port.isdigit() or not 0 < int(port) < 65536):
+        raise ValueError("Port must be a number between 1 and 65535.")
+    from_address = str(values.get("from_address") or "").strip()
+    if "@" not in from_address:
+        raise ValueError("From address must be an email address.")
+    return values
+
+
+# Outgoing email (SMTP) for the email/password sign-in flow: with it,
+# users can reset their own password and allowed-domain users can create
+# their own account from the sign-in screen (the emailed link proves they
+# own the address). Without it, only admin-issued set-password links work.
+# See auth/mailer.py.
+_register_core(ServiceSpec(
+    service="smtp",
+    label="Outgoing email (SMTP)",
+    fields=(
+        CredentialField(
+            key="host", label="SMTP host", type="text",
+            placeholder="smtp.example.com", required=True,
+        ),
+        CredentialField(
+            key="port", label="Port", type="text",
+            placeholder="587 (STARTTLS) or 465 (TLS)",
+        ),
+        CredentialField(
+            key="implicit_tls", label="Use implicit TLS (port 465)", type="bool",
+        ),
+        CredentialField(
+            key="username", label="Username", type="text",
+            placeholder="Leave empty for unauthenticated relays",
+        ),
+        CredentialField(
+            key="password", label="Password", type="secret",
+            placeholder="SMTP password or app password",
+        ),
+        CredentialField(
+            key="from_address", label="From address", type="text",
+            placeholder="Quest <quest@example.com>", required=True,
+        ),
+    ),
+    is_configured=lambda config: bool(config.get("host") and config.get("from_address")),
+    validate=_validate_smtp,
+))
+
+
 # (The Telegram spec is plugin-registered from plugins/telegram.)
 
 # ---------------------------------------------------------------------------

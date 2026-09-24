@@ -7,8 +7,9 @@ Server-level credentials for upstream API integrations (OAuth client configs, AP
 The core roster (`CORE_SERVICES`) covers:
 
 - the Google OAuth client (`google_oauth`, used for login and all Google services),
-- Ramp (`ramp`), and
-- CoinGecko Pro (`coingecko`: the single server-level API key the `authed_get` service registry injects as `x-cg-pro-api-key` on `pro-api.coingecko.com` requests, read by `load_coingecko_api_key()` in `auth/config.py` with the usual store-first/legacy-section fallback).
+- Ramp (`ramp`),
+- CoinGecko Pro (`coingecko`: the single server-level API key the `authed_get` service registry injects as `x-cg-pro-api-key` on `pro-api.coingecko.com` requests, read by `load_coingecko_api_key()` in `auth/config.py` with the usual store-first/legacy-section fallback), and
+- outgoing email (`smtp`: host, port, implicit-TLS toggle, optional username/password, from address; configured = host + from address; store-only, no legacy location). Read by `auth/mailer.py` for the email/password sign-in flow's self-service reset/sign-up links and emailed admin invites -- see [Auth](auth.md#sign-in-methods).
 
 Plugins that declare a `credential_schema` are appended to the roster at load time (`KNOWN_SERVICES` = core + loaded plugins), getting a store file and an admin card with zero additional wiring:
 

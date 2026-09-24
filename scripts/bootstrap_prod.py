@@ -6,8 +6,12 @@ the configuration a usable production instance cannot run without:
 - ``admin_emails`` in server_config.json (with an empty list nobody can
   reach the admin UI, including the Settings > Service Credentials section
   used to configure everything else)
-- Google OAuth client credentials (without them the sign-in page renders a
-  configuration error, so no user can ever log in)
+- a way to sign in, per the ``login_method`` key in server_config.json:
+  for ``"password"`` (email + password accounts -- the wizard's default for
+  new deployments, no external setup needed) a password for at least one
+  admin account; for ``"google"`` (also what an absent key means, so
+  deployments that predate password sign-in are unchanged) Google OAuth
+  client credentials, without which no user can ever log in
 
 The wizard also prompts for the login email domain, the public URL the
 deployment is accessed through (used for OAuth callback URLs and
@@ -15,9 +19,12 @@ app-generated absolute links), and LLM credentials (a Vertex AI
 service-account key + project id; all models run on Vertex) -- those are
 not re-prompted on later runs once configured. Answers are written to
 server_config.json, the per-service credential store
-(<data_dir>/service_credentials/google_oauth.json), and
+(<data_dir>/service_credentials/google_oauth.json),
 <data_dir>/vertex-service-account.json (the service-account key copy that
-run.py exports as GOOGLE_APPLICATION_CREDENTIALS in staging/prod).
+run.py exports as GOOGLE_APPLICATION_CREDENTIALS in staging/prod) and, for
+password sign-in, <data_dir>/pending_admin_passwords.json (scrypt hashes of
+the admin passwords -- the database does not exist yet, so the server
+applies and deletes this file on its next startup).
 
 When the deployment is unconfigured but stdin is not a terminal (e.g. a
 systemd unit), startup aborts with instructions instead of launching a
@@ -31,8 +38,16 @@ modules so it can run before any dependency installation has happened.
 import getpass
 import json
 import os
+import sqlite3
 import sys
 from pathlib import Path
+
+from config.password_hashing import (
+    hash_password,
+    password_problem,
+    read_pending_admin_passwords,
+    write_pending_admin_passwords,
+)
 
 # Env var escape hatch: skip the non-interactive abort and start anyway.
 SKIP_BOOTSTRAP_ENV = "QUEST_SKIP_BOOTSTRAP"
@@ -53,6 +68,20 @@ GOOGLE_OAUTH_WEB_DEFAULTS = {
 # Both redirect paths must be registered on the Google OAuth client: login
 # and the separate Google-services (Gmail/Calendar/Drive) consent flow.
 OAUTH_REDIRECT_PATHS = ("/auth/callback", "/auth/google-services/callback")
+
+# Sign-in methods (mirrors LOGIN_METHODS in auth/config.py). An absent key
+# means Google sign-in for the running app; the wizard defaults new
+# deployments to password sign-in.
+LOGIN_METHOD_PASSWORD = "password"
+LOGIN_METHOD_GOOGLE = "google"
+
+# Public mailbox providers: never suggested as the allowed login domain
+# (admitting "gmail.com" would admit every Gmail user).
+PUBLIC_EMAIL_DOMAINS = frozenset({
+    "gmail.com", "googlemail.com", "outlook.com", "hotmail.com", "live.com",
+    "yahoo.com", "icloud.com", "me.com", "aol.com", "proton.me",
+    "protonmail.com", "gmx.com", "fastmail.com",
+})
 
 
 def _read_json_object(path: Path) -> dict:
@@ -103,20 +132,61 @@ def llm_configured(project_root: Path) -> bool:
     )
 
 
+def configured_login_method(config: dict) -> str | None:
+    """The explicit ``login_method`` in server_config.json, or None."""
+    value = str(config.get("login_method") or "").strip().lower()
+    return value if value in (LOGIN_METHOD_PASSWORD, LOGIN_METHOD_GOOGLE) else None
+
+
+def emails_with_password(data_dir: Path) -> set:
+    """Lowercased emails that have (or are about to get) a sign-in password.
+
+    Reads the users table with the stdlib sqlite3 module (the database may
+    not exist yet, or predate the password_hash column) plus the pending
+    file the wizard hands to the server.
+    """
+    emails = set(read_pending_admin_passwords(data_dir))
+    db_path = data_dir / "quest.db"
+    if db_path.exists():
+        try:
+            conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+            try:
+                rows = conn.execute(
+                    "SELECT email FROM users WHERE password_hash IS NOT NULL"
+                ).fetchall()
+            finally:
+                conn.close()
+            emails.update(str(row[0]).lower() for row in rows)
+        except sqlite3.Error:
+            pass
+    return emails
+
+
 def missing_required_config(project_root: Path, data_dir: Path) -> list:
     """Human-readable list of hard prerequisites this deployment is missing.
 
     Only the items that make the instance unusable for everyone gate the
-    wizard: admin_emails (nobody can administer) and Google OAuth (nobody
-    can log in). Everything else degrades to a feature-level error and is
-    configurable later through the admin Settings UI.
+    wizard: admin_emails (nobody can administer) and a way to sign in --
+    an admin password for password sign-in, Google OAuth client
+    credentials for Google sign-in. Everything else degrades to a
+    feature-level error and is configurable later through the admin
+    Settings UI.
     """
     missing = []
     config = _read_json_object(project_root / "server_config.json")
-    if not config.get("admin_emails"):
+    admin_emails = [str(e).strip().lower() for e in config.get("admin_emails") or []]
+    if not admin_emails:
         missing.append("admin_emails in server_config.json (nobody can reach the admin UI)")
-    if not google_oauth_configured(project_root, data_dir):
-        missing.append("Google OAuth client credentials (sign-in is impossible without them)")
+    method = configured_login_method(config)
+    if method == LOGIN_METHOD_PASSWORD:
+        if admin_emails and not (set(admin_emails) & emails_with_password(data_dir)):
+            missing.append("a password for an admin account (nobody can sign in)")
+    elif not google_oauth_configured(project_root, data_dir):
+        if method is None:
+            missing.append("a sign-in method: email + password, or Google OAuth "
+                           "client credentials (sign-in is impossible without one)")
+        else:
+            missing.append("Google OAuth client credentials (sign-in is impossible without them)")
     return missing
 
 
@@ -140,6 +210,60 @@ def _prompt_admin_emails() -> list:
         if emails and all("@" in e and "." in e.rsplit("@", 1)[-1] for e in emails):
             return emails
         print("  ! Enter at least one full email address (e.g. admin@example.com).")
+
+
+def _prompt_login_method(default: str) -> str:
+    """Prompt for the sign-in method until it is one of the two choices."""
+    print("Sign-in method:")
+    print("  password -- email + password accounts managed in Quest. Nothing to")
+    print("              set up outside Quest; the easiest way to try it out.")
+    print("  google   -- Google sign-in. Needs a Google Cloud OAuth client.")
+    print("You can switch a password deployment to Google sign-in later from")
+    print("Settings > Sign-in without losing any accounts.")
+    while True:
+        value = _prompt("Sign-in method (password/google)", default).strip().lower()
+        if value in (LOGIN_METHOD_PASSWORD, LOGIN_METHOD_GOOGLE):
+            return value
+        print('  ! Enter "password" or "google".')
+
+
+def _prompt_new_password(email: str, required: bool) -> str:
+    """Prompt (twice) for *email*'s password; "" when skipped."""
+    while True:
+        first = _prompt_secret(
+            f"Password for {email}" + ("" if required else " (Enter to skip)")
+        )
+        if not first:
+            if required:
+                print("  ! At least one admin needs a password to be able to sign in.")
+                continue
+            return ""
+        problem = password_problem(first)
+        if problem:
+            print(f"  ! {problem}")
+            continue
+        if _prompt_secret("Repeat the password") != first:
+            print("  ! The passwords did not match.")
+            continue
+        return first
+
+
+def _prompt_admin_passwords(admin_emails: list, have_password: set, force: bool) -> dict:
+    """Collect ``{email: password_hash}`` for admins that need a password."""
+    print()
+    print("--- Admin sign-in ---")
+    print("Choose the password each admin signs in with. Admins invite everyone")
+    print("else from Settings > Sign-in once the server is running.")
+    hashes = {}
+    for email in admin_emails:
+        if email.lower() in have_password and not force:
+            continue
+        # One admin password is required unless some admin already has one.
+        required = not hashes and not (have_password & {e.lower() for e in admin_emails})
+        password = _prompt_new_password(email, required)
+        if password:
+            hashes[email.lower()] = hash_password(password)
+    return hashes
 
 
 def _prompt_google_oauth(base_url: str, existing: dict) -> dict:
@@ -271,6 +395,22 @@ def run_wizard(project_root: Path, data_dir: Path, force: bool = False) -> None:
 
     updates = {}
 
+    # Sign-in method: password sign-in needs nothing outside Quest, so it is
+    # the default for new deployments. A deployment that already has Google
+    # OAuth credentials but no explicit method is a pre-password-sign-in
+    # install running on Google sign-in; keep that as its default.
+    method = configured_login_method(config)
+    if method is None or force:
+        default_method = method or (
+            LOGIN_METHOD_GOOGLE if google_oauth_configured(project_root, data_dir)
+            else LOGIN_METHOD_PASSWORD
+        )
+        method = _prompt_login_method(default_method)
+        print()
+    if method != configured_login_method(config):
+        updates["login_method"] = method
+    password_login = method == LOGIN_METHOD_PASSWORD
+
     # Admin emails: whoever administers the deployment, incl. the Settings >
     # Service Credentials section used to configure the other connectors.
     admin_emails = config.get("admin_emails") or []
@@ -278,36 +418,51 @@ def run_wizard(project_root: Path, data_dir: Path, force: bool = False) -> None:
         admin_emails = _prompt_admin_emails()
         updates["admin_emails"] = admin_emails
 
-    # Allowed login domain: the Google login callback rejects accounts
-    # outside this domain, so every deployment must set its own (the
-    # built-in ALLOWED_DOMAIN default is only a placeholder).
-    if not config.get("allowed_login_domain") or force:
-        default_domain = (
-            config.get("allowed_login_domain")
-            or (admin_emails[0].rsplit("@", 1)[-1] if admin_emails else "")
+    # Allowed login domain: sign-in (and, for password sign-in, self-service
+    # account creation) is refused for accounts outside this domain and the
+    # additional-emails list below, so every deployment sets its own (the
+    # built-in ALLOWED_DOMAIN default is only a placeholder). Public mailbox
+    # domains are never suggested: that would admit everyone on them.
+    domain = config.get("allowed_login_domain", "")
+    if not domain or force:
+        admin_domain = admin_emails[0].rsplit("@", 1)[-1].lower() if admin_emails else ""
+        default_domain = domain or (
+            "" if admin_domain in PUBLIC_EMAIL_DOMAINS else admin_domain
         )
-        domain = _prompt(
-            "Email domain allowed to sign in (users must have Google accounts on it)",
-            default_domain,
-        ).lstrip("@")
+        if password_login:
+            question = ("Email domain whose users may have accounts, e.g. your "
+                        "company domain (Enter for none)")
+        else:
+            question = "Email domain allowed to sign in (users must have Google accounts on it)"
+        domain = _prompt(question, default_domain).lstrip("@")
         if domain:
             updates["allowed_login_domain"] = domain
 
     # Individual allowed emails: accounts outside the domain (e.g. personal
     # @gmail.com users on a family deployment) that may also sign in.
-    if not config.get("allowed_login_emails") or force:
+    emails = list(config.get("allowed_login_emails") or [])
+    if not emails or force:
+        if password_login:
+            print("Admins can also invite individual addresses later from Settings > Sign-in.")
         while True:
             raw = _prompt(
                 "Additional email address(es) allowed to sign in, "
                 "comma-separated (Enter for none)",
-                ",".join(config.get("allowed_login_emails") or []),
+                ",".join(emails),
             )
             emails = [e.strip() for e in raw.split(",") if e.strip()]
             if all("@" in e and "." in e.rsplit("@", 1)[-1] for e in emails):
                 break
             print("  ! Enter full email addresses (e.g. person@gmail.com).")
-        if emails:
-            updates["allowed_login_emails"] = emails
+    # Admins must be able to sign in themselves: allow-list any admin
+    # outside the allowed domain.
+    for admin in admin_emails:
+        if domain and admin.lower().endswith("@" + domain.lower()):
+            continue
+        if admin.lower() not in {e.lower() for e in emails}:
+            emails.append(admin)
+    if emails != list(config.get("allowed_login_emails") or []):
+        updates["allowed_login_emails"] = emails
 
     # Public URL: the address users browse to. Used as the base for OAuth
     # redirect URIs (Google rejects raw-IP redirect URIs), shown in the
@@ -329,7 +484,12 @@ def run_wizard(project_root: Path, data_dir: Path, force: bool = False) -> None:
             updates["app_base_url"] = base_url
 
     google_oauth = {}
-    if not google_oauth_configured(project_root, data_dir) or force:
+    admin_password_hashes = {}
+    if password_login:
+        admin_password_hashes = _prompt_admin_passwords(
+            admin_emails, emails_with_password(data_dir), force,
+        )
+    elif not google_oauth_configured(project_root, data_dir) or force:
         store_file = data_dir / "service_credentials" / "google_oauth.json"
         google_oauth = _prompt_google_oauth(base_url, _read_json_object(store_file))
 
@@ -356,6 +516,8 @@ def run_wizard(project_root: Path, data_dir: Path, force: bool = False) -> None:
         written.append(str(_merge_server_config(project_root, updates)))
     if google_oauth:
         written.append(str(_store_google_oauth(data_dir, google_oauth)))
+    if admin_password_hashes:
+        written.append(str(write_pending_admin_passwords(data_dir, admin_password_hashes)))
 
     print()
     print("Bootstrap complete." if written else "Bootstrap made no changes.")
@@ -367,6 +529,14 @@ def run_wizard(project_root: Path, data_dir: Path, force: bool = False) -> None:
     if not llm_configured(project_root):
         print("  ! No LLM credentials configured: the app will run but chat is disabled.")
     print()
+    if password_login:
+        print("Sign in with an admin email and the password chosen above, then")
+        print("invite users from Settings > Sign-in. Configure outgoing email")
+        print("(Settings > Service Credentials > Outgoing email) to let users")
+        print("reset their own passwords and create accounts on the allowed")
+        print("domain. Google OAuth (for Gmail/Calendar/Drive connectors, or to")
+        print("switch to Google sign-in later) is configured there as well.")
+        print()
     print("Other connectors (Slack, GitHub, Twitter/X, Ramp) are configured")
     print("after login by an admin under Settings > Service Credentials.")
     print()

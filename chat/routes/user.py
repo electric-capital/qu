@@ -120,7 +120,8 @@ async def get_app_config():
     """
     from config import environment
     from chat.llm.config import get_available_models, public_model_catalog
-    from auth.config import allowed_login_domain, login_restriction_description
+    from auth.config import allowed_login_domain, login_method, login_restriction_description
+    from auth.mailer import smtp_configured
 
     return {
         "quest_env": environment.get_quest_env(),
@@ -134,6 +135,11 @@ async def get_app_config():
         # Never enumerates the allowed_login_emails whitelist (this
         # endpoint is unauthenticated).
         "login_restriction": login_restriction_description(),
+        # Active sign-in method ("google" or "password") and, for password
+        # sign-in, whether the sign-in screen can offer self-service
+        # sign-up / forgot-password (requires outgoing email).
+        "login_method": login_method(),
+        "password_self_service": smtp_configured(),
     }
 
 
@@ -205,6 +211,9 @@ async def get_current_user_info(user: dict = Depends(get_current_user_cookie_or_
         # from the composer Flags popover and the New Project modal's
         # public checkbox when the gate is closed for this user.
         "enabled_features": enabled_features(user["email"]),
+        # Whether the account has an email/password sign-in password (the
+        # Settings > Password section then asks for the current one).
+        "has_password": bool(user.get("password_fp")),
     }
 
 

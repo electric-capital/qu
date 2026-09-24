@@ -10,6 +10,7 @@ from sqlalchemy import String, Text, DateTime, JSON
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, validates
 
 from config.encryption import hash_api_key
+from config.password_hashing import password_fingerprint
 from db.encrypted_types import EncryptedJSON, EncryptedText
 
 
@@ -202,6 +203,15 @@ class User(Base):
         EncryptedJSON("users.ramp_oauth"), nullable=True
     )
 
+    # Email/password sign-in (login_method "password"): scrypt hash string
+    # from config/password_hashing.py. NULL for accounts that never set a
+    # password (Google sign-in, dev logins, pending invites). Kept when the
+    # deployment switches to Google sign-in -- password logins are refused
+    # by the login_method check, not by clearing hashes.
+    password_hash: Mapped[Optional[str]] = mapped_column(
+        String(255), nullable=True, default=None
+    )
+
     def to_dict(self) -> dict:
         """Convert to dictionary matching the current user dict format.
 
@@ -226,6 +236,10 @@ class User(Base):
             d["airtable_token"] = self.airtable_token
         if self.ramp_oauth is not None:
             d["ramp_oauth"] = self.ramp_oauth
+        if self.password_hash is not None:
+            # Only the fingerprint rides on the user dict (session-cookie
+            # binding); the hash itself never leaves db/password_store.py.
+            d["password_fp"] = password_fingerprint(self.password_hash)
         return d
 
 
@@ -334,6 +348,40 @@ class InferenceApiKey(Base):
     )
 
     last_used_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True, default=None
+    )
+
+
+class PasswordToken(Base):
+    """A one-time link for setting a password (invite, sign-up or reset).
+
+    Keyed by email rather than user id: invites and self-service sign-ups
+    are issued before the account exists, and the account is created when
+    the link is used. Only the SHA-256 of the raw token is stored; the raw
+    token travels in the link's URL fragment.
+    """
+
+    __tablename__ = "password_tokens"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+
+    # Lowercased email the link sets the password for.
+    email: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
+
+    # SHA-256 hex digest of the raw token.
+    token_hash: Mapped[str] = mapped_column(
+        String(64), unique=True, index=True, nullable=False
+    )
+
+    # "invite" (admin-issued, also used for resets an admin hands out) or
+    # "reset" (self-service email link, incl. first-time sign-up).
+    purpose: Mapped[str] = mapped_column(String(16), nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=lambda: datetime.now(timezone.utc)
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    used_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime, nullable=True, default=None
     )
 

@@ -4,7 +4,8 @@ This guide walks a human (or agent) installer through setting up Quest in a **ne
 from a bare Debian machine to a running instance. It covers three things in order:
 
 1. [Host dependencies](#1-host-dependencies-debian) -- OS packages and tools the app needs
-2. [Google OAuth setup](#2-google-oauth-setup) -- so users can sign in and connect Google services
+2. [Google OAuth setup](#2-google-oauth-setup) -- optional: Google sign-in and the Google services
+   connectors (a deployment can use email + password sign-in instead)
 3. [Vertex AI setup](#3-vertex-ai-setup) -- so the app can call Claude and Gemini models
 
 For day-to-day development workflow see [docs/setup/development.md](docs/setup/development.md);
@@ -22,9 +23,13 @@ script-runner image build, server start) in one command:
 
 - `python3 run.py` -- **local mode**: port 9000, throwaway seeded database, canned-account login,
   no credentials required to boot. Good for a first smoke test.
-- `python3 run.py --prod` -- **production mode**: port 8000, real Google login, domain
+- `python3 run.py --prod` -- **production mode**: port 8000, real sign-in, domain
   restriction. On an unconfigured machine this launches an interactive first-run wizard
-  (`scripts/bootstrap_prod.py`) that prompts for everything in sections 2 and 3 below.
+  (`scripts/bootstrap_prod.py`) that prompts for everything in sections 2 and 3 below. Its
+  default sign-in method is **email + password** (you choose the admin password in the wizard
+  and invite users from Settings > Sign-in), which needs no Google OAuth client -- skip
+  section 2 until you want Google services or Google sign-in. A password deployment can switch
+  to Google sign-in later from Settings > Sign-in without losing any accounts.
 
 ## 1. Host dependencies (Debian)
 
@@ -97,7 +102,8 @@ configured (section 3). Continue with sections 2 and 3 for a real deployment.
 Google OAuth serves two separate flows on the same OAuth client:
 
 - **App login** (`/auth/callback`) -- identity only (`openid`, `email`, `profile`). Required for
-  any non-local deployment; without it nobody can sign in.
+  deployments using Google sign-in (`"login_method": "google"`); not used under email +
+  password sign-in.
 - **Google Services** (`/auth/google-services/callback`) -- broader per-user scopes for Gmail,
   Calendar, Drive, Docs, Sheets, Slides, Tasks, and read-only Google Cloud access. Optional;
   users connect it later from Settings. The full scope list is `GOOGLE_SERVICE_SCOPES` in
@@ -136,7 +142,8 @@ server's IP via DNS or `/etc/hosts` on client machines. See
 
 Preferred paths, in order:
 
-- **Production first run**: `python3 run.py --prod` launches the bootstrap wizard, which prompts
+- **Production first run**: `python3 run.py --prod` launches the bootstrap wizard, which (when
+  you pick Google sign-in) prompts
   for admin email(s), the allowed login domain, the public hostname, and the OAuth client
   id/secret, then writes them to the right places (`server_config.json` plus the per-service
   credential store under `data/service_credentials/`). It also prints the exact redirect URIs to

@@ -70,8 +70,10 @@ the user clicks Approve, Revise, or Stop. Pending approvals survive restarts and
 Everything happens in the web UI: OAuth connect buttons in Settings, approval cards instead of
 config files, readable previews instead of raw payloads, cost warnings before resuming expensive
 conversations, and admin panels for credentials, feature gates (risky features are off by
-default), model health, and per-user cost reports. Sign-in is Google OAuth restricted to an
-allowed domain or an explicit email whitelist.
+default), model health, and per-user cost reports. Sign-in is email + password (the default for
+new deployments, no external setup) or Google OAuth, restricted to an allowed domain or an
+explicit email whitelist; a password deployment can switch to Google sign-in later and keep
+every account.
 
 ## Plugin architecture for upstream services
 

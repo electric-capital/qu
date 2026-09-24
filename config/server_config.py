@@ -54,6 +54,13 @@ def load_server_config() -> dict:
         # auth/config.py). Lets a deployment admit accounts outside any
         # single domain, e.g. personal @gmail.com users.
         "allowed_login_emails": [],
+        # How users sign in: "google" (Google OAuth) or "password" (email +
+        # password accounts, see auth/password_login.py). Exactly one method
+        # is active. Absent means "google" so deployments that predate
+        # password sign-in keep working; the prod bootstrap wizard writes
+        # "password" for new deployments. See login_method() in
+        # auth/config.py.
+        "login_method": "",
         "gemini": {
             "model": "gemini-3.1-pro-preview",
         },
@@ -94,6 +101,7 @@ def load_server_config() -> dict:
             config["allowed_login_emails"] = user_config.get(
                 "allowed_login_emails", []
             )
+            config["login_method"] = user_config.get("login_method", "")
 
     # Public app URL env var override
     env_app_base_url = os.getenv("QUEST_APP_BASE_URL")
@@ -222,3 +230,25 @@ def check_vertex_credentials_consistency() -> None:
                 key_path,
                 key_project,
             )
+
+
+def update_server_config(updates: dict) -> None:
+    """Merge top-level *updates* into server_config.json, preserving other keys.
+
+    Used by the few admin actions that change deployment-level settings
+    from the app (the sign-in method switch, invite-driven additions to
+    ``allowed_login_emails``). Written atomically via a temp file + rename
+    so a crash never leaves a truncated config behind.
+    """
+    config = {}
+    if SERVER_CONFIG_FILE.exists():
+        with open(SERVER_CONFIG_FILE, "r") as f:
+            config = json.load(f)
+        if not isinstance(config, dict):
+            raise ValueError("server_config.json does not hold a JSON object")
+    config.update(updates)
+    tmp = SERVER_CONFIG_FILE.with_suffix(".json.tmp")
+    with open(tmp, "w") as f:
+        json.dump(config, f, indent=2)
+        f.write("\n")
+    os.replace(tmp, SERVER_CONFIG_FILE)
