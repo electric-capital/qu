@@ -879,9 +879,15 @@ export interface VersionResponse {
 // Admin system monitor types.
 // Per-model usage is a discriminated union on `provider`: each entry carries
 // that provider's summed NATIVE token fields in `metrics` (no normalized
-// in/out/cached buckets) plus `estimated_cost_usd`, a list-price estimate
-// computed per-call-tier server-side (db/llm_pricing.py); null when the
-// model has no pricing entry.
+// in/out/cached buckets) plus `estimated_cost_usd`, the USD cost of those
+// calls, and `cost_source` saying where that figure came from:
+// 'reported' when every call was priced from the amount the provider
+// itself reported (OpenRouter rows carry `usage.cost`), 'estimated' when
+// every call is a list-price estimate computed per-call-tier server-side
+// (db/llm_pricing.py), 'mixed' when some of each. Both are null when the
+// model has neither reported amounts nor a pricing entry.
+export type AdminCostSource = 'reported' | 'estimated' | 'mixed';
+
 export interface AdminGeminiModelUsage {
   model: string;
   provider: 'gemini';
@@ -889,6 +895,7 @@ export interface AdminGeminiModelUsage {
   // prompt + candidates + thoughts + tool_use_prompt (coarse magnitude).
   total_tokens: number;
   estimated_cost_usd: number | null;
+  cost_source: AdminCostSource | null;
   metrics: {
     prompt_token_count: number; // includes cached_content_token_count
     cached_content_token_count: number;
@@ -905,6 +912,7 @@ export interface AdminAnthropicModelUsage {
   // input + output + cache_read + cache_creation (coarse magnitude).
   total_tokens: number;
   estimated_cost_usd: number | null;
+  cost_source: AdminCostSource | null;
   metrics: {
     input_tokens: number; // uncached input only
     output_tokens: number;
@@ -923,6 +931,7 @@ export interface AdminOpenRouterModelUsage {
   // completion includes reasoning).
   total_tokens: number;
   estimated_cost_usd: number | null;
+  cost_source: AdminCostSource | null;
   metrics: {
     prompt_tokens: number; // includes cached_prompt_tokens
     cached_prompt_tokens: number;
@@ -940,10 +949,13 @@ export type AdminConversationModelUsage =
 // meaningfully across providers, but an all-in magnitude does).
 // `estimated_cost_usd` is null when any model in the conversation lacks a
 // pricing entry (a partial sum would read as the full conversation cost).
+// `cost_source` follows the per-model convention across all models (null
+// while nothing priced has been folded in, so also on zero-activity rows).
 export interface AdminConversationUsageTotal {
   call_count: number;
   total_tokens: number;
   estimated_cost_usd: number | null;
+  cost_source: AdminCostSource | null;
 }
 
 // One conversation row in the System Reports tables. Served by both the
@@ -1006,6 +1018,7 @@ export interface AdminUserRoutineCost {
   conversation_count: number;
   // null when any model used under this routine lacks a pricing entry.
   cost_usd: number | null;
+  cost_source: AdminCostSource | null;
 }
 
 export interface AdminUserReportRow {
@@ -1021,7 +1034,9 @@ export interface AdminUserReportRow {
   conversation_count: number; // non-routine only
   routine_conversation_count: number;
   cost_excluding_routines_usd: number | null;
+  cost_excluding_routines_source: AdminCostSource | null;
   cost_routines_usd: number | null;
+  cost_routines_source: AdminCostSource | null;
   // The routine split itemized per routine, most expensive first (ranked
   // by the priceable portion, so an unpriced routine still sorts by what
   // CAN be priced). Empty when the user ran no routines in the range.

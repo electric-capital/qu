@@ -1030,6 +1030,10 @@ class LlmCallOpenRouter(Base):
     - ``completion_tokens`` INCLUDES ``reasoning_tokens`` (the API's
       ``completion_tokens_details.reasoning_tokens``).
     - ``total_tokens = prompt_tokens + completion_tokens``.
+    - ``cost`` / ``upstream_inference_cost`` / ``is_byok`` are the accounting
+      fields OpenRouter reported for the request (see the column comments);
+      read queries prefer ``cost`` (plus ``upstream_inference_cost`` on
+      BYOK rows) over the list-price estimate when present.
     - Context-tier pricing (should a tiered OpenRouter model ever be added)
       keys on ``prompt_tokens`` per row.
     """
@@ -1080,6 +1084,23 @@ class LlmCallOpenRouter(Base):
     reasoning_tokens: Mapped[Optional[int]] = mapped_column(sa.Integer, nullable=True)
     # prompt_tokens + completion_tokens (provider-reported).
     total_tokens: Mapped[Optional[int]] = mapped_column(sa.Integer, nullable=True)
+    # USD OpenRouter reported charging the account for this request (the
+    # usage object's ``cost``, present because the provider opts in with
+    # ``usage: {"include": true}``). NULL for rows recorded before capture
+    # existed or when the provider omitted it -- those stay list-price
+    # estimated in the read queries. On a bring-your-own-key request this
+    # is only OpenRouter's fee; the upstream provider's charge (billed to
+    # the user's own key) is the next column.
+    cost: Mapped[Optional[float]] = mapped_column(sa.Float, nullable=True)
+    # ``cost_details.upstream_inference_cost``: the upstream provider's
+    # charge. Observed populated (equal to ``cost``) on non-BYOK requests
+    # too, so read queries add it to ``cost`` ONLY when ``is_byok`` is true.
+    upstream_inference_cost: Mapped[Optional[float]] = mapped_column(
+        sa.Float, nullable=True
+    )
+    # Whether the request ran on a bring-your-own-key upstream (the usage
+    # object's ``is_byok``); NULL when not reported.
+    is_byok: Mapped[Optional[bool]] = mapped_column(sa.Boolean, nullable=True)
 
     # Lossless provider usage fields verbatim (catch-all; the native columns
     # above are its queryable projection). NULL when the provider returned no

@@ -225,7 +225,12 @@ async def admin_latest_active_conversations(
 
 _EMPTY_USAGE = {
     "models": [],
-    "total": {"call_count": 0, "total_tokens": 0, "estimated_cost_usd": 0.0},
+    "total": {
+        "call_count": 0,
+        "total_tokens": 0,
+        "estimated_cost_usd": 0.0,
+        "cost_source": None,
+    },
 }
 
 
@@ -393,11 +398,18 @@ async def admin_most_expensive_conversations(
 # Zero-activity placeholder so every user in the roster gets a full row.
 _EMPTY_USER_USAGE = {
     "models": [],
-    "total": {"call_count": 0, "total_tokens": 0, "estimated_cost_usd": 0.0},
+    "total": {
+        "call_count": 0,
+        "total_tokens": 0,
+        "estimated_cost_usd": 0.0,
+        "cost_source": None,
+    },
     "conversation_count": 0,
     "routine_conversation_count": 0,
     "cost_excluding_routines_usd": 0.0,
+    "cost_excluding_routines_source": None,
     "cost_routines_usd": 0.0,
+    "cost_routines_source": None,
     "known_cost_usd": 0.0,
     "routines": [],
 }
@@ -419,6 +431,7 @@ def _routine_cost_view(routine_usage: dict, label: Optional[dict]) -> dict:
         "project_name": label["project_name"] if label else None,
         "conversation_count": routine_usage["conversation_count"],
         "cost_usd": routine_usage["cost_usd"],
+        "cost_source": routine_usage["cost_source"],
     }
 
 
@@ -506,7 +519,9 @@ async def admin_user_report(
             "conversation_count": usage["conversation_count"],
             "routine_conversation_count": usage["routine_conversation_count"],
             "cost_excluding_routines_usd": usage["cost_excluding_routines_usd"],
+            "cost_excluding_routines_source": usage["cost_excluding_routines_source"],
             "cost_routines_usd": usage["cost_routines_usd"],
+            "cost_routines_source": usage["cost_routines_source"],
             "routine_costs": [
                 _routine_cost_view(r, routine_labels.get(r["routine_id"]))
                 for r in usage["routines"]

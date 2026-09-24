@@ -27,6 +27,22 @@ from chat.llm.tool_schemas import to_openai_tools
 
 logger = logging.getLogger(__name__)
 
+
+def _as_float(value: Any) -> float | None:
+    """Coerce a usage accounting field (float, int, or numeric string) to
+    float; None for anything else, so a malformed value is skipped rather
+    than recorded."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return None
+    return None
+
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 # Optional attribution headers OpenRouter uses for its app rankings; harmless
@@ -165,6 +181,10 @@ class OpenRouterProvider(LLMProvider):
             ),
             "stream": True,
             "stream_options": {"include_usage": True},
+            # OpenRouter-only extension: ask for the USD amount charged for
+            # this request in the final usage chunk (``usage.cost``), which
+            # the analytics layer prefers over its list-price estimate.
+            "extra_body": {"usage": {"include": True}},
         }
         if session.tools:
             api_kwargs["tools"] = session.tools
@@ -271,6 +291,14 @@ class OpenRouterProvider(LLMProvider):
         ``prompt_tokens_details.cached_tokens``, ``reasoning_tokens`` from
         ``completion_tokens_details.reasoning_tokens``), skipping fields the
         provider did not populate -- same convention as the Gemini provider.
+
+        The OpenRouter-specific accounting extension fields (returned
+        because the request opts in with ``usage: {"include": true}``) are
+        captured the same way: ``cost`` (USD charged by OpenRouter),
+        ``upstream_inference_cost`` (``cost_details.upstream_inference_cost``,
+        the upstream provider's charge on BYOK requests) and ``is_byok``.
+        The openai SDK keeps unknown usage fields as pydantic extras, so
+        plain attribute access reaches them.
         """
         last = session.last_usage
         for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
@@ -285,6 +313,20 @@ class OpenRouterProvider(LLMProvider):
         reasoning = getattr(completion_details, "reasoning_tokens", None)
         if reasoning is not None:
             last["reasoning_tokens"] = reasoning
+        cost = _as_float(getattr(usage, "cost", None))
+        if cost is not None:
+            last["cost"] = cost
+        cost_details = getattr(usage, "cost_details", None)
+        if isinstance(cost_details, dict):
+            upstream = cost_details.get("upstream_inference_cost")
+        else:
+            upstream = getattr(cost_details, "upstream_inference_cost", None)
+        upstream = _as_float(upstream)
+        if upstream is not None:
+            last["upstream_inference_cost"] = upstream
+        is_byok = getattr(usage, "is_byok", None)
+        if isinstance(is_byok, bool):
+            last["is_byok"] = is_byok
 
     def format_tool_results(
         self,
@@ -338,6 +380,9 @@ class OpenRouterProvider(LLMProvider):
                 "total_tokens",
                 "cached_prompt_tokens",
                 "reasoning_tokens",
+                "cost",
+                "upstream_inference_cost",
+                "is_byok",
             )
             if key in usage
         }

@@ -101,7 +101,7 @@ A future API-key kind (local inference, a direct Anthropic/OpenAI API) is an `IN
 The model id is already the universal key -- conversation and routine rows, per-user defaults, the health store, analytics rows, the frontend catalog -- so folding the instance into it keeps every one of those paths unchanged and the migration a pure string prefix. A separate column would have had to be threaded through the WebSocket send path, the scheduler, sub-agent spawning and analytics.
 
 **Why snapshot catalog metadata instead of reading the catalog at request time?**
-Sends must not depend on openrouter.ai being reachable, and pricing must stay stable for the rows already recorded. The snapshot is refreshed only when the admin adds the model again.
+Sends must not depend on openrouter.ai being reachable, and pricing must stay stable for the rows already recorded. The snapshot is refreshed only when the admin adds the model again. Since the provider captures the amount OpenRouter actually charged per call (`llm_calls_openrouter.cost`, see [LLM Providers](llm-providers.md#openrouterprovider)), the snapshot only prices rows recorded before that capture existed -- drift in it no longer skews the reports.
 
 **Why is Vertex read-only in the panel?**
 Vertex auth is ambient (ADC/env), typically provisioned by `run.py`, the prod bootstrap, or deployment tooling, and consumed by Google SDKs outside the app's control; the panel's job is to make the detected state visible, not to own it. Metadata-server credentials (GCE instance service accounts) are intentionally not probed to keep the settings request free of network calls, and the card says so. Enabling/disabling individual Vertex models is app state, so that part is editable.

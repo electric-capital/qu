@@ -109,6 +109,7 @@ def test_routine_cost_view_labels_row_and_placeholders_missing_routine():
         "routine_id": "r-1",
         "conversation_count": 3,
         "cost_usd": 1.25,
+        "cost_source": "reported",
         "known_cost_usd": 1.25,
     }
     label = {"name": "Daily digest", "project_id": "p-1", "project_name": "Research"}
@@ -120,15 +121,19 @@ def test_routine_cost_view_labels_row_and_placeholders_missing_routine():
         "project_name": "Research",
         "conversation_count": 3,
         "cost_usd": 1.25,
+        "cost_source": "reported",
     }
     # The internal ranking key never leaks to the API row.
     assert "known_cost_usd" not in _routine_cost_view(usage, label)
 
-    assert _routine_cost_view({**usage, "cost_usd": None}, None) == {
+    assert _routine_cost_view(
+        {**usage, "cost_usd": None, "cost_source": None}, None
+    ) == {
         "routine_id": "r-1",
         "routine_name": "(deleted routine)",
         "project_id": None,
         "project_name": None,
         "conversation_count": 3,
         "cost_usd": None,
+        "cost_source": None,
     }

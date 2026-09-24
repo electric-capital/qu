@@ -300,6 +300,138 @@ def test_record_api_call_openrouter_lands_in_openrouter_table(_isolated_db):
     assert len(rows) == 1
     assert rows[0]["provider"] == "openrouter"
     assert rows[0]["prompt_tokens"] == 120
+    # No accounting fields in raw_usage -> the reported-cost columns stay NULL.
+    assert row["cost"] is None
+    assert row["upstream_inference_cost"] is None
+
+
+def _record_openrouter(store, models_mod, conversation_id, prompt, completion,
+                       cost=None, upstream=None, is_byok=None, cached=0,
+                       model="openrouter:deepseek/deepseek-v4-flash-0731",
+                       user_id=9):
+    raw_usage = {
+        "prompt_tokens": prompt,
+        "completion_tokens": completion,
+        "cached_prompt_tokens": cached,
+    }
+    if cost is not None:
+        raw_usage["cost"] = cost
+    if upstream is not None:
+        raw_usage["upstream_inference_cost"] = upstream
+    if is_byok is not None:
+        raw_usage["is_byok"] = is_byok
+    return _run(store.record_api_call(
+        conversation_id=conversation_id,
+        user_id=user_id,
+        model=model,
+        call_type=models_mod.ApiCallType.TOP_LEVEL,
+        input_tokens=prompt,
+        output_tokens=completion,
+        duration_ms=1,
+        cached_tokens=cached,
+        provider="openrouter",
+        backend="openrouter",
+        raw_usage=raw_usage,
+    ))
+
+
+def test_record_api_call_openrouter_persists_reported_cost(_isolated_db):
+    """The OpenRouter accounting fields land in their own columns verbatim."""
+    store, models_mod = _isolated_db
+    row = _record_openrouter(
+        store, models_mod, str(uuid.uuid4()), 1000, 100,
+        cost=0.00025, upstream=0.0001, is_byok=False,
+    )
+    assert row["cost"] == pytest.approx(0.00025)
+    assert row["upstream_inference_cost"] == pytest.approx(0.0001)
+    assert row["is_byok"] is False
+    assert row["raw_usage"]["cost"] == pytest.approx(0.00025)
+
+
+def test_usage_by_model_prefers_reported_openrouter_cost(_isolated_db):
+    """Rows with a reported amount are summed as-is and the entry/total are
+    flagged ``reported``; the list-price estimate is not consulted for
+    them. The upstream charge only counts on BYOK rows -- OpenRouter also
+    reports it (equal to ``cost``) on ordinary requests."""
+    store, models_mod = _isolated_db
+    conversation_id = str(uuid.uuid4())
+    # Ordinary request: upstream mirrors cost and must NOT double count.
+    _record_openrouter(store, models_mod, conversation_id, 1_000_000, 1_000_000,
+                       cost=0.5, upstream=0.5, is_byok=False)
+    # BYOK request: OpenRouter's fee + the upstream provider's charge.
+    _record_openrouter(store, models_mod, conversation_id, 1_000_000, 1_000_000,
+                       cost=0.25, upstream=0.75, is_byok=True)
+    # No is_byok reported at all: cost only.
+    _record_openrouter(store, models_mod, conversation_id, 1_000_000, 1_000_000,
+                       cost=0.1, upstream=0.1)
+
+    entry = _run(store.get_usage_by_model_for_conversations([conversation_id]))[
+        conversation_id
+    ]
+    (m,) = entry["models"]
+    assert m["call_count"] == 3
+    # 0.5 + (0.25 + 0.75) + 0.1 -- NOT the static-table estimate of these
+    # tokens (3M * 0.08 + 3M * 0.18 = $0.78).
+    assert m["estimated_cost_usd"] == pytest.approx(1.6)
+    assert m["cost_source"] == "reported"
+    assert entry["total"]["estimated_cost_usd"] == pytest.approx(1.6)
+    assert entry["total"]["cost_source"] == "reported"
+
+
+def test_usage_by_model_mixes_reported_and_estimated_rows(_isolated_db):
+    """Pre-capture rows (NULL cost) stay estimated alongside reported rows:
+    the model entry sums both and is flagged ``mixed``; a token-only
+    provider in the same conversation is ``estimated`` and the total
+    degrades to ``mixed``."""
+    store, models_mod = _isolated_db
+    conversation_id = str(uuid.uuid4())
+    _record_openrouter(store, models_mod, conversation_id, 1_000_000, 0, cost=0.5)
+    # Static fallback table: deepseek-v4-flash-0731 = $0.08/M uncached input.
+    _record_openrouter(store, models_mod, conversation_id, 1_000_000, 0)
+    _run(store.record_api_call(
+        conversation_id=conversation_id,
+        user_id=9,
+        model="claude-opus-4-8",
+        call_type=models_mod.ApiCallType.SUB_AGENT,
+        input_tokens=1_000_000,
+        output_tokens=0,
+        duration_ms=1,
+        provider="anthropic",
+        raw_usage={"input_tokens": 1_000_000, "output_tokens": 0},
+    ))
+
+    entry = _run(store.get_usage_by_model_for_conversations([conversation_id]))[
+        conversation_id
+    ]
+    by_model = {m["model"]: m for m in entry["models"]}
+    openrouter = by_model["openrouter:deepseek/deepseek-v4-flash-0731"]
+    assert openrouter["call_count"] == 2
+    assert openrouter["metrics"]["prompt_tokens"] == 2_000_000
+    assert openrouter["estimated_cost_usd"] == pytest.approx(0.5 + 0.08)
+    assert openrouter["cost_source"] == "mixed"
+    assert by_model["claude-opus-4-8"]["cost_source"] == "estimated"
+    assert entry["total"]["estimated_cost_usd"] == pytest.approx(0.58 + 5.0)
+    assert entry["total"]["cost_source"] == "mixed"
+
+
+def test_usage_by_model_unpriced_reported_model_still_costs(_isolated_db):
+    """A model with no pricing entry anywhere is still priced when the
+    provider reported the amount -- only its estimate-needing rows null."""
+    store, models_mod = _isolated_db
+    reported_chat, unpriced_chat = str(uuid.uuid4()), str(uuid.uuid4())
+    _record_openrouter(store, models_mod, reported_chat, 10, 10, cost=0.001,
+                       model="openrouter:vendor/unlisted-model")
+    _record_openrouter(store, models_mod, unpriced_chat, 10, 10,
+                       model="openrouter:vendor/unlisted-model")
+
+    result = _run(store.get_usage_by_model_for_conversations(
+        [reported_chat, unpriced_chat]
+    ))
+    assert result[reported_chat]["models"][0]["estimated_cost_usd"] == pytest.approx(0.001)
+    assert result[reported_chat]["models"][0]["cost_source"] == "reported"
+    assert result[unpriced_chat]["models"][0]["estimated_cost_usd"] is None
+    assert result[unpriced_chat]["models"][0]["cost_source"] is None
+    assert result[unpriced_chat]["total"]["cost_source"] is None
 
 
 def test_record_api_call_infers_provider_from_model_prefix(_isolated_db):
@@ -488,6 +620,7 @@ def test_usage_by_model_gemini_native_metrics(_isolated_db):
         "call_count": 2,
         "total_tokens": m["total_tokens"],
         "estimated_cost_usd": None,
+        "cost_source": None,
     }
 
 
