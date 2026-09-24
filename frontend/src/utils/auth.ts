@@ -16,6 +16,8 @@ export async function checkSession(): Promise<{
   impersonator_email: string | null;
   impersonator_name: string | null;
   default_model: string | null;
+  // Last-used model for public-project composers (null = never sent one).
+  public_default_model?: string | null;
   // Settings > Appearance colour scheme: "light" | "dark" | null (= auto).
   theme?: string | null;
   // Settings > Appearance colour theme id ("prototype" | "electric-blue" | "alloy" | "recall");

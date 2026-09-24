@@ -8,7 +8,8 @@ import { checkSession } from '../utils/auth';
 import { applyTheme, cacheTheme, normalizeTheme, readCachedTheme, type ThemePreference } from '../utils/theme';
 import { applyColorTheme, cacheColorTheme, normalizeColorTheme, readCachedColorTheme, type ColorThemeId } from '../utils/colorTheme';
 import { fetchGuides, fetchProjects, fetchVersion } from '../api/client';
-import { DEPRECATED_MODEL_MAP, DEFAULT_MODEL_ID, getModelInfo, resolveFallbackModel, setModelCatalog } from '../constants/models';
+import { DEPRECATED_MODEL_MAP, DEFAULT_MODEL_ID, isModelSelectableFor, resolveFallbackModel, setModelCatalog } from '../constants/models';
+import type { ModelVisibility } from '../constants/models';
 import { HOME_DRAFT_KEY } from '../constants/drafts';
 import { persistentWebSocket } from '../services/PersistentWebSocket';
 import type { ComposerAttachmentRef, Guide, Project } from '../api/types';
@@ -17,28 +18,46 @@ import type { ComposerAttachmentRef, Guide, Project } from '../api/types';
 const VERSION_POLL_INTERVAL_MS = 60_000;
 
 /**
- * Resolve a (possibly null / stale / unknown) server-stored default model id
- * to a usable model id: remap deprecated ids, validate against the model catalog
- * and against the server's credentialed-model list (available_models from
- * GET /app/api/config; null while unknown), and fall back to the best
- * credentialed model when unset/unknown/uncredentialed -- Opus 4.8 when its
- * credentials exist (or the list is unknown), otherwise the first credentialed
- * model in catalog order (see resolveFallbackModel). A stored
- * default that is deprecated (still runnable, but hidden from the picker) also
- * falls back, so new conversations never start on a deprecated model. Single
- * place the FE applies the fallback (the backend /me returns the raw stored
- * value).
+ * Resolve a chain of (possibly null / stale / unknown) server-stored model
+ * ids to a usable model id for a conversation visibility: the first
+ * candidate that -- after the deprecated-id remap -- is in the catalog, not
+ * deprecated, allowed by the admin for that visibility (Settings > Model
+ * Selection) and credentialed (available_models from GET /app/api/config;
+ * null while unknown) wins; otherwise the best offerable model for that
+ * visibility (see resolveFallbackModel: Opus 4.8 when allowed + credentialed,
+ * else the admin's first top-level pick, else the first offerable model in
+ * catalog order). A stored pick that is deprecated (still runnable, but
+ * hidden from the picker) also falls through, so new conversations never
+ * start on a deprecated model. Single place the FE applies the fallback (the
+ * backend /me returns the raw stored values).
  */
 function resolveDefaultModel(
-  raw: string | null | undefined,
+  candidates: (string | null | undefined)[],
   availableIds: string[] | null,
+  visibility: ModelVisibility,
 ): string {
-  if (!raw) return resolveFallbackModel(availableIds);
-  const remapped = DEPRECATED_MODEL_MAP[raw] || raw;
-  const entry = getModelInfo(remapped);
-  const usable = entry !== undefined && !entry.deprecated;
-  const credentialed = availableIds === null || availableIds.includes(remapped);
-  return usable && credentialed ? remapped : resolveFallbackModel(availableIds);
+  for (const raw of candidates) {
+    if (!raw) continue;
+    const remapped = DEPRECATED_MODEL_MAP[raw] || raw;
+    if (isModelSelectableFor(remapped, visibility, availableIds)) return remapped;
+  }
+  return resolveFallbackModel(availableIds, visibility);
+}
+
+/**
+ * The stored "last-used" candidates for a visibility, from a GET /me payload.
+ * Public composers try the public pick first and then the private one, so a
+ * user's first public project starts on their usual model when the admin
+ * allows it there; private composers only ever use the private pick.
+ */
+function defaultModelCandidates(
+  userInfo: { default_model?: string | null; public_default_model?: string | null } | null,
+  visibility: ModelVisibility,
+): (string | null | undefined)[] {
+  if (!userInfo) return [];
+  return visibility === 'public'
+    ? [userInfo.public_default_model, userInfo.default_model]
+    : [userInfo.default_model];
 }
 
 // File browser state per conversation
@@ -80,31 +99,39 @@ interface ConversationContextValue {
   // GET /app/api/config). null until the config fetch resolves; treat null
   // as "all models" so the picker doesn't flicker empty on load.
   availableModelIds: string[] | null;
-  // Per-user "last-used" default conversation model. Sourced ONLY from a fresh
-  // GET /me fetch (no localStorage); falls back to Opus 4.8 when unset, or to
-  // the first credentialed model when Opus credentials are missing server-side
-  // (available_models from GET /app/api/config). Re-read on every new-composer
-  // mount via refreshDefaultModel(); written server-side only on the first
-  // send of a new chat via persistDefaultModel().
+  // Per-user "last-used" default conversation model, one per conversation
+  // visibility: `private` (users.settings.default_model -- everything outside
+  // a public project) and `public` (users.settings.public_default_model --
+  // public-project conversations, whose admin allow-list differs). Sourced
+  // ONLY from a fresh GET /me fetch (no localStorage); each falls back to the
+  // best model offerable for its visibility (resolveFallbackModel). Re-read
+  // on every new-composer mount AND every private/public context switch via
+  // refreshDefaultModel(); written server-side only on the first send of a
+  // new chat via persistDefaultModel(). `defaultModel` is the private one.
   defaultModel: string;
-  setDefaultModel: (model: string) => void;
-  // Re-fetch the per-user default from the server (GET /me) and re-apply it to
-  // defaultModel. Called on every fresh new-chat composer mount for cross-tab
-  // correctness (no WS push). Does not touch localStorage. Resolves to the
-  // freshly-resolved model id (credentialed-fallback when unset/uncredentialed).
-  refreshDefaultModel: () => Promise<string>;
-  // Best-effort PUT /settings { default_model } persisting the user-level
-  // default. The ONLY server write of the default; called solely from the
-  // first-send paths.
-  persistDefaultModel: (model: string) => void;
+  defaultModels: Record<ModelVisibility, string>;
+  setDefaultModel: (model: string, visibility?: ModelVisibility) => void;
+  // Re-fetch the per-user defaults from the server (GET /me) and re-apply the
+  // one for the given visibility (private when omitted). Called on every
+  // fresh new-chat composer mount and whenever a composer switches between
+  // the private and public contexts, for cross-tab correctness (no WS push).
+  // Does not touch localStorage. Resolves to the freshly-resolved model id
+  // (visibility-aware fallback when unset/disallowed/uncredentialed).
+  refreshDefaultModel: (visibility?: ModelVisibility) => Promise<string>;
+  // Best-effort PUT /settings { default_model } (private) or
+  // { public_default_model } (public) persisting the user-level last-used
+  // pick for that visibility. The ONLY server write of either; called solely
+  // from the first-send paths.
+  persistDefaultModel: (model: string, visibility?: ModelVisibility) => void;
   getModelForConversation: (conversationId: string) => string;
   setModelForConversation: (conversationId: string, model: string) => void;
   hydrateModelForConversation: (conversationId: string, model: string) => void;
   // Draft-safe model setter for the root home composer: updates only the
-  // in-memory per-conversation model map (and defaultModel for display). Does
-  // NOT PATCH the server and does NOT persist the user default (the draft
-  // "conversation" doesn't exist yet; the default is persisted on first send).
-  setDraftModelForConversation: (conversationId: string, model: string) => void;
+  // in-memory per-conversation model map (and the given visibility's
+  // in-memory default for display, private when omitted). Does NOT PATCH the
+  // server and does NOT persist the user default (the draft "conversation"
+  // doesn't exist yet; the default is persisted on first send).
+  setDraftModelForConversation: (conversationId: string, model: string, visibility?: ModelVisibility) => void;
   // File browser state per conversation
   getFileBrowserState: (conversationId: string) => FileBrowserState;
   setFileBrowserState: (conversationId: string, state: FileBrowserState) => void;
@@ -156,6 +183,10 @@ interface ConversationContextValue {
     model: string;
     skillIds: string[];
     flags: string[];
+    // Whether the chat was started inside a public project (the home
+    // composer knows from the drilled project; ChatPanel only learns it
+    // asynchronously), so the first send persists the right last-used pick.
+    isPublicProject: boolean;
     // Workspace-relative names of generic files attached on the home screen,
     // uploaded into the new workspace before navigation; forwarded into the
     // first send so they appear in the triggering turn's metadata. Empty when
@@ -172,6 +203,7 @@ interface ConversationContextValue {
     model: string;
     skillIds: string[];
     flags: string[];
+    isPublicProject: boolean;
     attachedFilenames: string[];
     attachments: ComposerAttachmentRef[];
   } | null) => void;
@@ -233,10 +265,18 @@ export function ConversationProvider({ children }: ConversationProviderProps) {
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
-  // Per-user default conversation model. No localStorage: the authoritative
-  // value comes from a fresh GET /me fetch (hydration + every new-composer
-  // mount). Start at the Opus-4.8 fallback as a pre-fetch placeholder.
-  const [defaultModel, setDefaultModelState] = useState<string>(DEFAULT_MODEL_ID);
+  // Per-user default conversation model per visibility. No localStorage: the
+  // authoritative values come from a fresh GET /me fetch (hydration + every
+  // new-composer mount / context switch). Start both at the Opus-4.8
+  // fallback as a pre-fetch placeholder.
+  const [defaultModels, setDefaultModels] = useState<Record<ModelVisibility, string>>({
+    private: DEFAULT_MODEL_ID,
+    public: DEFAULT_MODEL_ID,
+  });
+  const defaultModel = defaultModels.private;
+  const setDefaultModelState = useCallback((model: string, visibility: ModelVisibility = 'private') => {
+    setDefaultModels((prev) => (prev[visibility] === model ? prev : { ...prev, [visibility]: model }));
+  }, []);
   const [conversationModels, setConversationModels] = useState<Record<string, string>>({});
   const [fileBrowserStates, setFileBrowserStates] = useState<Record<string, FileBrowserState>>({});
   const [userEmail, setUserEmail] = useState<string | null>(null);
@@ -293,6 +333,7 @@ export function ConversationProvider({ children }: ConversationProviderProps) {
     model: string;
     skillIds: string[];
     flags: string[];
+    isPublicProject: boolean;
     attachedFilenames: string[];
     attachments: ComposerAttachmentRef[];
   } | null>(null);
@@ -421,10 +462,16 @@ export function ConversationProvider({ children }: ConversationProviderProps) {
         setIsImpersonating(userInfo.is_impersonating);
         setImpersonatorEmail(userInfo.impersonator_email);
         setImpersonatorName(userInfo.impersonator_name);
-        // Hydrate the per-user default model from /me (remap + validate
-        // against the credentialed-model list + best-credentialed fallback).
-        // Same resolution used by refreshDefaultModel().
-        setDefaultModelState(resolveDefaultModel(userInfo.default_model, availableModelIdsRef.current));
+        // Hydrate the per-visibility default models from /me (remap +
+        // validate against the admin allow-list for the visibility and the
+        // credentialed-model list + best-offerable fallback). Same
+        // resolution used by refreshDefaultModel().
+        for (const visibility of ['private', 'public'] as ModelVisibility[]) {
+          setDefaultModelState(
+            resolveDefaultModel(defaultModelCandidates(userInfo, visibility), availableModelIdsRef.current, visibility),
+            visibility,
+          );
+        }
         setIsAuthenticated(true);
       } else {
         setIsAuthenticated(false);
@@ -467,37 +514,40 @@ export function ConversationProvider({ children }: ConversationProviderProps) {
     };
   }, [updateAvailable]);
 
-  const setDefaultModel = useCallback((model: string) => {
+  const setDefaultModel = useCallback((model: string, visibility: ModelVisibility = 'private') => {
     // In-memory only: reflects a picker change in the current composer's
     // display. Does NOT write the server default or localStorage -- the
     // user-level default is persisted only on first-send (persistDefaultModel).
-    setDefaultModelState(model);
-  }, []);
+    setDefaultModelState(model, visibility);
+  }, [setDefaultModelState]);
 
-  // Re-fetch the per-user default from the server (GET /me) and re-apply it.
-  // Invoked on every fresh new-chat composer mount so the composer reflects the
-  // latest server value across tabs without any cross-tab push.
-  const refreshDefaultModel = useCallback(async (): Promise<string> => {
+  // Re-fetch the per-user defaults from the server (GET /me) and re-apply the
+  // one for the requested visibility. Invoked on every fresh new-chat composer
+  // mount and on every private<->public context switch so the composer
+  // reflects the latest server value across tabs without any cross-tab push.
+  const refreshDefaultModel = useCallback(async (visibility: ModelVisibility = 'private'): Promise<string> => {
     const userInfo = await checkSession();
     // Make sure the mount-time config fetch has settled so resolution sees the
     // credentialed-model list (no-op after the first composer mount).
     if (configFetchRef.current) await configFetchRef.current;
     const resolved = resolveDefaultModel(
-      userInfo ? userInfo.default_model : null,
+      defaultModelCandidates(userInfo, visibility),
       availableModelIdsRef.current,
+      visibility,
     );
-    setDefaultModelState(resolved);
+    setDefaultModelState(resolved, visibility);
     return resolved;
-  }, []);
+  }, [setDefaultModelState]);
 
-  // Persist the user-level default server-side (best-effort, fire-and-forget).
-  // The ONLY write of the default; called exclusively from the first-send
-  // paths. Does not touch localStorage.
-  const persistDefaultModel = useCallback((model: string) => {
+  // Persist the user-level last-used pick for a visibility server-side
+  // (best-effort, fire-and-forget). The ONLY write of either key; called
+  // exclusively from the first-send paths. Does not touch localStorage.
+  const persistDefaultModel = useCallback((model: string, visibility: ModelVisibility = 'private') => {
+    const key = visibility === 'public' ? 'public_default_model' : 'default_model';
     fetch('/app/api/settings', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ default_model: model }),
+      body: JSON.stringify({ [key]: model }),
     }).catch(() => {});
   }, []);
 
@@ -525,16 +575,20 @@ export function ConversationProvider({ children }: ConversationProviderProps) {
     setConversationModels((prev) => ({ ...prev, [conversationId]: model }));
   }, []);
 
-  const setDraftModelForConversation = useCallback((conversationId: string, model: string) => {
+  const setDraftModelForConversation = useCallback((
+    conversationId: string,
+    model: string,
+    visibility: ModelVisibility = 'private',
+  ) => {
     // Home-composer model setter: update the in-memory per-conversation map (and
-    // defaultModel for display). Do NOT PATCH the server -- the draft-keyed
-    // "conversation" does not exist yet. Do NOT persist the user-level default
-    // here either: selecting a model without sending must not write the default.
-    // The default is persisted on first send (persistDefaultModel, in
-    // HomeComposer.handleSend / ChatPanel's first-send path). No localStorage.
+    // the visibility's default for display). Do NOT PATCH the server -- the
+    // draft-keyed "conversation" does not exist yet. Do NOT persist the
+    // user-level default here either: selecting a model without sending must
+    // not write the default. The default is persisted on first send
+    // (persistDefaultModel, in ChatPanel's first-send paths). No localStorage.
     setConversationModels((prev) => ({ ...prev, [conversationId]: model }));
-    setDefaultModelState(model);
-  }, []);
+    setDefaultModelState(model, visibility);
+  }, [setDefaultModelState]);
 
   const getFileBrowserState = useCallback((conversationId: string): FileBrowserState => {
     return fileBrowserStates[conversationId] || { path: '/', history: ['/'], historyIndex: 0 };
@@ -729,6 +783,7 @@ export function ConversationProvider({ children }: ConversationProviderProps) {
     setHasPassword,
     availableModelIds,
     defaultModel,
+    defaultModels,
     setDefaultModel,
     refreshDefaultModel,
     persistDefaultModel,
@@ -799,6 +854,7 @@ export function ConversationProvider({ children }: ConversationProviderProps) {
     setHasPassword,
     availableModelIds,
     defaultModel,
+    defaultModels,
     setDefaultModel,
     refreshDefaultModel,
     persistDefaultModel,

@@ -21,6 +21,10 @@ class UserSettingsUpdate(BaseModel):
     custom_system_prompt: Optional[str] = None
     slack_default_model: Optional[str] = None
     default_model: Optional[str] = None
+    # Last-used composer model for PUBLIC-project conversations, tracked
+    # separately from ``default_model`` (private) because the admin's Model
+    # Selection allow-lists differ per visibility. Same validation/clearing.
+    public_default_model: Optional[str] = None
     gmail_labels: Optional[List[str]] = None
     # Settings > Appearance colour-scheme preference: "light", "dark" or
     # "auto" (follow the OS). Empty string clears the stored value (= auto).
@@ -197,6 +201,10 @@ async def get_current_user_info(user: dict = Depends(get_current_user_cookie_or_
         # the users.settings JSON blob (same pattern as slack_default_model),
         # written only on the first send of a new chat.
         "default_model": user.get("settings", {}).get("default_model"),
+        # Same for public-project conversations: the model last sent from a
+        # public-project composer. The FE keeps the two apart so drilling
+        # into / out of a public project restores that context's own pick.
+        "public_default_model": user.get("settings", {}).get("public_default_model"),
         # Settings > Appearance colour-scheme preference ("light" / "dark");
         # None means auto (follow the OS). The FE applies it to <html
         # data-theme> on hydration and caches it in localStorage so the next
@@ -277,11 +285,15 @@ async def update_settings(
     # Validate against MODEL_REGISTRY; treat empty string as "clear" so the
     # stored value becomes None (FE falls back to Opus 4.8). Mirrors the
     # slack_default_model handling above.
-    if "default_model" in update_data:
+    # public_default_model is the public-project twin (written on the first
+    # send of a new chat inside a public project).
+    for key in ("default_model", "public_default_model"):
+        if key not in update_data:
+            continue
         from chat.llm.config import resolve_model
-        candidate = update_data["default_model"]
+        candidate = update_data[key]
         if candidate == "":
-            update_data["default_model"] = None
+            update_data[key] = None
         elif resolve_model(candidate) is None:
             raise HTTPException(
                 status_code=400,
