@@ -96,9 +96,14 @@ export function HomeComposer({ onNewConversation }: HomeComposerProps) {
 
   // When the Sidebar is drilled into a project, the first send targets that
   // project; name it under the greeting so the destination is visible.
-  const drilledProjectName = drilledProjectId
-    ? projects.find((p) => p.id === drilledProjectId)?.name ?? null
+  const drilledProject = drilledProjectId
+    ? projects.find((p) => p.id === drilledProjectId) ?? null
     : null;
+  const drilledProjectName = drilledProject?.name ?? null;
+  // A public project's first chat starts here too: the composer needs to
+  // know so it offers only public-allowed models (and shows the
+  // sensitive-info banner / hides the Skill button like ChatPanel does).
+  const isPublicProject = Boolean(drilledProject?.public);
 
   // The shared composer's onSend. The text/model/skills/flags come from the
   // composer's own state + the draft-keyed context maps. ``attachments`` (the
@@ -266,6 +271,7 @@ export function HomeComposer({ onNewConversation }: HomeComposerProps) {
               isStreaming={submitting}
               skipSendLocks
               deferImageUpload
+              isPublicProject={isPublicProject}
               onModelChange={(m) => setDraftModelForConversation(HOME_DRAFT_KEY, m)}
             />
           </div>

@@ -195,5 +195,7 @@ export const endpoints = {
 
   adminInferenceModelTest: () => `${API_BASE_URL}/admin/inference-providers/test-model`,
 
+  adminModelSelection: () => `${API_BASE_URL}/admin/model-selection`,
+
   version: () => `${API_BASE_URL}/version`,
 };

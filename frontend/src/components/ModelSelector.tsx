@@ -1,25 +1,32 @@
 /**
  * ModelSelector -- the composer's two-level model menu.
  *
- * Replaces the old flat native <select>: the top level shows a short list of
- * curated picks (RECOMMENDED_MODELS: "Smart ($$$)" / "Faster ($$)" /
- * "Fastest ($)", each sublabeled with its concrete model name) and an
- * "All models" row that opens a flyout submenu with the full model list.
+ * Replaces the old flat native <select>: the top level shows the admin's
+ * slotted picks for the conversation's visibility (Settings > Model
+ * Selection keeps separate private and public-project top levels: up to
+ * five models each, shown as the descriptor -- e.g. "Smart ($$$)" --
+ * sublabeled with the concrete model name, or as the bare model name when
+ * the descriptor is empty) and an "All models" row that opens a flyout
+ * submenu with the full model list.
  *
  * The host passes the already-filtered model list (credentialed models,
- * narrowed by the conversation's provider lock); recommended picks that are
- * not in that list are hidden. When the current selection itself is not in
- * the list (deprecated model, or missing credentials), it is kept visible --
- * suffixed "(deprecated)" / "(no credentials)" -- so the user can see and
- * switch away from it, matching the old <select> behavior.
+ * allowed for the conversation's visibility, narrowed by the conversation's
+ * provider lock); slotted picks that are not in that list are hidden. When
+ * the current selection itself is not in the list (deprecated model, model
+ * the admin disallowed for this visibility, or missing credentials), it is
+ * kept visible -- suffixed "(deprecated)" / "(not allowed here)" / "(no
+ * credentials)" -- so the user can see and switch away from it, matching
+ * the old <select> behavior.
  *
  * Interaction mirrors the Flags popover (opens upward, outside-click close)
  * plus Escape-to-close and hover-or-click to open the submenu.
  */
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { RECOMMENDED_MODELS, getModelDisplayName, isDeprecatedModel } from '../constants/models';
-import type { ModelInfo } from '../constants/models';
+import {
+  getModelDisplayName, getModelInfo, getTopLevelModels, isDeprecatedModel, isModelAllowedFor,
+} from '../constants/models';
+import type { ModelInfo, ModelVisibility } from '../constants/models';
 
 export interface ModelSelectorProps {
   /** Currently selected model id ('' allowed in the read-only case). */
@@ -36,6 +43,12 @@ export interface ModelSelectorProps {
    * "Server default" when the conversation has no explicit model.
    */
   labelOverride?: string;
+  /**
+   * Visibility of the conversation the menu is for: selects which admin
+   * top level (private or public) to show and explains why a current
+   * selection is not in `models` ("(not allowed here)").
+   */
+  visibility?: ModelVisibility;
 }
 
 export function ModelSelector({
@@ -44,6 +57,7 @@ export function ModelSelector({
   onSelect,
   disabled = false,
   labelOverride,
+  visibility = 'private',
 }: ModelSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isSubmenuOpen, setIsSubmenuOpen] = useState(false);
@@ -81,19 +95,23 @@ export function ModelSelector({
     close();
   }, [onSelect, close]);
 
-  // Recommended picks are limited to what is actually selectable here.
-  const recommended = RECOMMENDED_MODELS.filter(
-    (r) => models.some((m) => m.id === r.modelId),
+  // The admin's top-level picks for this visibility, limited to what is
+  // actually selectable here.
+  const topLevel = getTopLevelModels(visibility).filter(
+    (t) => models.some((m) => m.id === t.id),
   );
 
-  // Keep a current selection that isn't offered (deprecated model, or
-  // credentials missing) visible in the full list so the user can see what
-  // is selected (and switch away from it).
+  // Keep a current selection that isn't offered (deprecated model, model
+  // disallowed for this visibility, or credentials missing) visible in the
+  // full list so the user can see what is selected (and switch away from it).
   const selectionMissing = selectedModel !== ''
     && !models.some((m) => m.id === selectedModel);
+  const selectedInfo = getModelInfo(selectedModel);
   const missingSuffix = isDeprecatedModel(selectedModel)
     ? ' (deprecated)'
-    : ' (no credentials)';
+    : selectedInfo && !isModelAllowedFor(selectedInfo, visibility)
+      ? ' (not allowed here)'
+      : ' (no credentials)';
   const triggerLabel = labelOverride
     ?? (getModelDisplayName(selectedModel) + (selectionMissing ? missingSuffix : ''));
 
@@ -116,28 +134,26 @@ export function ModelSelector({
       </button>
       {isOpen && (
         <div className="model-menu" role="menu">
-          {recommended.map((rec) => (
+          {topLevel.map((pick) => (
             <button
               type="button"
-              key={rec.modelId}
+              key={pick.id}
               role="menuitem"
               className={
                 'model-menu-item'
-                + (rec.modelId === selectedModel ? ' model-menu-item-selected' : '')
+                + (pick.id === selectedModel ? ' model-menu-item-selected' : '')
               }
-              onClick={() => handlePick(rec.modelId)}
+              onClick={() => handlePick(pick.id)}
               onMouseEnter={() => setIsSubmenuOpen(false)}
             >
               <span className="model-menu-item-text">
-                <span className="model-menu-item-label">
-                  {rec.label} <span className="model-menu-item-cost">({rec.cost})</span>
-                </span>
-                <span className="model-menu-item-sub">{getModelDisplayName(rec.modelId)}</span>
+                <span className="model-menu-item-label">{pick.descriptor || pick.name}</span>
+                {pick.descriptor && <span className="model-menu-item-sub">{pick.name}</span>}
               </span>
-              {rec.modelId === selectedModel && <CheckIcon />}
+              {pick.id === selectedModel && <CheckIcon />}
             </button>
           ))}
-          {recommended.length > 0 && <div className="model-menu-divider" />}
+          {topLevel.length > 0 && <div className="model-menu-divider" />}
           <div
             className="model-submenu-anchor"
             onMouseEnter={() => setIsSubmenuOpen(true)}

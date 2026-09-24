@@ -483,19 +483,38 @@ def public_model_catalog() -> list[dict]:
 
     Every known model incl. deprecated/disabled ones, so the UI can still
     label and size old conversations; selection is governed separately by
-    ``available_models``.
+    ``available_models``. Each entry also carries the admin's Model
+    Selection settings (``config/model_selection.py``): the private and
+    public top-level menu slots + ``descriptor`` and the ``allow_private``
+    / ``allow_public`` usage flags the composer filters its menu by. While
+    public mode is off the flags are reported as allowed (the stored
+    values are masked, not changed) and ``public_slot`` as null.
     """
-    return [
-        {
+    from config.model_selection import (
+        public_mode_enabled,
+        read_model_selection,
+        selection_for,
+    )
+
+    selection = read_model_selection()
+    public_mode = public_mode_enabled()
+    catalog = []
+    for spec in list_model_specs():
+        entry = selection_for(spec.id, selection)
+        catalog.append({
             "id": spec.id,
             "display_name": spec.display_name,
             "provider": spec.provider,
             "provider_label": spec.provider_label,
             "max_input_tokens": spec.max_input_tokens,
             "deprecated": spec.deprecated,
-        }
-        for spec in list_model_specs()
-    ]
+            "slot": entry["slot"],
+            "public_slot": entry["public_slot"] if public_mode else None,
+            "descriptor": entry["descriptor"],
+            "allow_private": entry["allow_private"] if public_mode else True,
+            "allow_public": entry["allow_public"] if public_mode else True,
+        })
+    return catalog
 
 
 # ---------------------------------------------------------------------------

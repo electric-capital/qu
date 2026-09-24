@@ -415,6 +415,12 @@ def test_helper_lookups(store):
         "provider_label": "OpenRouter",
         "max_input_tokens": ip.DEFAULT_INSTANCE_CONTEXT_LENGTH,
         "deprecated": False,
+        # Admin Model Selection fields (config/model_selection.py), unset here
+        "slot": None,
+        "public_slot": None,
+        "descriptor": "",
+        "allow_private": True,
+        "allow_public": True,
     }
 
 

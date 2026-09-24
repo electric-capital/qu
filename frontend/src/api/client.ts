@@ -59,6 +59,8 @@ import type {
   VertexModelsUpdate,
   VertexProviderStatus,
   InferenceModelTestResult,
+  ModelSelectionListResponse,
+  ModelSelectionUpdate,
   InferenceApiKeysListResponse,
   CreatedInferenceApiKey,
 } from './types';
@@ -762,6 +764,16 @@ export function updateInferenceInstance(
 
 export function deleteInferenceInstance(instanceId: string): Promise<{ success: boolean }> {
   return apiDelete(endpoints.adminInferenceInstance(instanceId));
+}
+
+export function fetchModelSelection(): Promise<ModelSelectionListResponse> {
+  return apiGet(endpoints.adminModelSelection());
+}
+
+export function updateModelSelection(
+  update: ModelSelectionUpdate,
+): Promise<ModelSelectionListResponse> {
+  return apiPut(endpoints.adminModelSelection(), { body: update });
 }
 
 export function searchOpenRouterCatalog(

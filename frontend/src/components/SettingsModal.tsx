@@ -18,6 +18,7 @@ import {
   InferenceProvidersSection,
   PasswordSection,
   SignInSection,
+  ModelSelectionSection,
   SignOutSection,
   AboutSection,
 } from './settings';
@@ -29,7 +30,7 @@ interface SettingsModalProps {
   onClose: () => void;
 }
 
-type SettingsSection = 'data-connections' | 'appearance' | 'password' | 'sign-in' | 'slack' | 'gmail' | 'sms' | 'memories' | 'guides' | 'skills' | 'inference-api' | 'feature-gates' | 'service-credentials' | 'inference-providers' | 'about' | 'sign-out';
+type SettingsSection = 'data-connections' | 'appearance' | 'password' | 'sign-in' | 'slack' | 'gmail' | 'sms' | 'memories' | 'guides' | 'skills' | 'inference-api' | 'feature-gates' | 'service-credentials' | 'inference-providers' | 'model-selection' | 'about' | 'sign-out';
 
 interface SectionEntry {
   id: SettingsSection;
@@ -82,6 +83,7 @@ const ADMIN_SECTIONS: SectionEntry[] = [
   { id: 'feature-gates', label: 'Features' },
   { id: 'service-credentials', label: 'Service Credentials' },
   { id: 'inference-providers', label: 'Inference Providers' },
+  { id: 'model-selection', label: 'Model Selection' },
 ];
 
 // Listed after every other section in the top nav group (below Admin for
@@ -234,6 +236,8 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         return isAdmin && !isMobile ? <ServiceCredentialsSection /> : null;
       case 'inference-providers':
         return isAdmin && !isMobile ? <InferenceProvidersSection /> : null;
+      case 'model-selection':
+        return isAdmin && !isMobile ? <ModelSelectionSection /> : null;
       case 'about':
         return <AboutSection />;
       case 'sign-out':
