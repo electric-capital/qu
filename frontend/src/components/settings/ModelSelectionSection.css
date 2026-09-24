@@ -148,16 +148,27 @@
   margin: 0.75rem 0 0;
 }
 
+/* Save (shared SaveActions) and Discard on one baseline: the shared row
+   carries the top margin, so its own is cancelled here, and Discard
+   matches .settings-save-button's size (SettingsModal.css). */
 .model-selection-actions {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.model-selection-actions .settings-actions {
+  margin-top: 0;
 }
 
 .model-selection-discard-btn {
-  font-size: 0.8125rem;
-  padding: 0.375rem 0.75rem;
-  border-radius: 4px;
+  padding: 0.5rem 1.25rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  font-family: inherit;
+  line-height: normal;
+  border-radius: 6px;
   border: 1px solid var(--border-strong);
   background: transparent;
   color: var(--text-secondary);
