@@ -104,11 +104,22 @@
   padding: 0.1875rem 0;
 }
 
+/* Fixed column grid so the wire id, name and controls line up across rows:
+   checkbox | wire id | friendly name | controls cluster (fixed width) */
 .inf-prov-model-line {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1.3fr) minmax(0, 1fr) 8rem;
   align-items: center;
   gap: 0.5rem;
   font-size: 0.8125rem;
+}
+
+.inf-prov-model-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  min-width: 0;
 }
 
 .inf-prov-model-name {
@@ -135,7 +146,6 @@
 /* The wire id (what the API call sends) is the primary label; the
    friendly name sits beside it, muted */
 .inf-prov-model-wire {
-  flex: 1 1 auto;
   min-width: 0;
   font-family: monospace;
   color: var(--text);
@@ -145,7 +155,6 @@
 }
 
 .inf-prov-model-display {
-  flex: 0 1 40%;
   min-width: 0;
   color: var(--text-secondary);
   font-size: 0.75rem;
@@ -155,7 +164,6 @@
 }
 
 .inf-prov-model-off-note {
-  flex: 1 0 auto;
   text-align: right;
   font-size: 0.6875rem;
   color: var(--text-muted);
@@ -164,7 +172,6 @@
 /* Liveness indicator: grey = never checked, green = responding, red = failing */
 .inf-prov-dot {
   flex: 0 0 auto;
-  margin-left: auto;
   width: 0.5rem;
   height: 0.5rem;
   border-radius: 50%;

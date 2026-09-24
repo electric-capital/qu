@@ -211,34 +211,39 @@ function ModelRow({
         <span className="inf-prov-model-wire" title={model.id}>
           {model.wire_id}
         </span>
-        {showName && <span className="inf-prov-model-display">{model.display_name}</span>}
-        {showLiveness ? (
-          <>
-            <LivenessDot state={state} />
+        {/* Always rendered (possibly empty) so the grid columns stay put */}
+        <span className="inf-prov-model-display" title={showName ? model.display_name : undefined}>
+          {showName ? model.display_name : ''}
+        </span>
+        <span className="inf-prov-model-controls">
+          {showLiveness ? (
+            <>
+              <LivenessDot state={state} />
+              <button
+                className="inf-prov-model-check-btn"
+                onClick={onCheck}
+                disabled={state.status === 'checking' || busy}
+              >
+                {state.status === 'idle' || state.status === 'checking' ? 'Check' : 'Recheck'}
+              </button>
+            </>
+          ) : (
+            <span className="inf-prov-model-off-note">
+              {model.enabled ? 'not configured' : 'disabled'}
+            </span>
+          )}
+          {onRemove && (
             <button
-              className="inf-prov-model-check-btn"
-              onClick={onCheck}
-              disabled={state.status === 'checking' || busy}
+              className="inf-prov-model-remove-btn"
+              onClick={onRemove}
+              disabled={busy}
+              title={`Remove ${model.wire_id} from this configuration`}
+              aria-label={`Remove ${model.wire_id}`}
             >
-              {state.status === 'idle' || state.status === 'checking' ? 'Check' : 'Recheck'}
+              <X size={12} />
             </button>
-          </>
-        ) : (
-          <span className="inf-prov-model-off-note">
-            {model.enabled ? 'not configured' : 'disabled'}
-          </span>
-        )}
-        {onRemove && (
-          <button
-            className="inf-prov-model-remove-btn"
-            onClick={onRemove}
-            disabled={busy}
-            title={`Remove ${model.wire_id} from this configuration`}
-            aria-label={`Remove ${model.wire_id}`}
-          >
-            <X size={12} />
-          </button>
-        )}
+          )}
+        </span>
       </div>
       {showLiveness && state.status === 'error' && (
         <p className="inf-prov-model-error">{state.error}</p>
