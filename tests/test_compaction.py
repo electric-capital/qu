@@ -337,7 +337,7 @@ def _install_compaction_fakes(monkeypatch, tmp_path, provider, history):
         "chat.gemini_api.session.remove_chat_session", lambda *a: True,
     )
     monkeypatch.setattr(
-        "chat.llm.config.get_provider_instance", lambda name: provider,
+        "chat.llm.config.get_provider_instance", lambda name, instance_id=None: provider,
     )
 
     # Seed the on-disk envelope the real loader/writer will use.

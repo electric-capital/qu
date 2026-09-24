@@ -69,13 +69,19 @@ _ANTHROPIC_CACHE_READ_MULT = 0.10
 _ANTHROPIC_CACHE_WRITE_5M_MULT = 1.25
 _ANTHROPIC_CACHE_WRITE_1H_MULT = 2.00
 
-# OpenRouter rates per 1M tokens (the routed provider's list price as shown
-# on openrouter.ai / GET /api/v1/models, checked 2026-08-21; OpenRouter
-# itself adds no per-token markup). ``input`` is the rate for uncached
+# OpenRouter rates per 1M tokens. Instance-served models are priced from
+# the pricing snapshot the admin endpoint copied from the OpenRouter
+# catalog when the model was added to its instance
+# (``instance_model_pricing`` in config/inference_providers.py -- looked up
+# by wire id, i.e. with the ``<instance>:`` qualifier stripped, so rows
+# from every instance of the same model price alike). This static table
+# is the fallback for models no configured instance lists any more
+# (historical rows): the routed provider's list price as shown on
+# openrouter.ai, checked 2026-08-21. ``input`` is the rate for uncached
 # prompt tokens, ``cache_read`` for the ``cached_prompt_tokens`` subset;
 # reasoning tokens bill at the output rate (they are already included in
-# ``completion_tokens``). Models without an entry simply report "no
-# estimate" in the dashboards.
+# ``completion_tokens``). Models with neither simply report "no estimate"
+# in the dashboards.
 _OPENROUTER_PRICING: dict[str, dict] = {
     "deepseek/deepseek-v4-flash-0731": {
         "input": 0.08, "output": 0.18, "cache_read": 0.016,
@@ -84,6 +90,22 @@ _OPENROUTER_PRICING: dict[str, dict] = {
         "input": 0.45, "output": 3.20, "cache_read": 0.05,
     },
 }
+
+
+def _openrouter_entry(model: str) -> Optional[dict]:
+    """Pricing entry for an OpenRouter row: instance snapshot, then the
+    static table. ``model`` may be qualified (``openrouter:vendor/x``) or a
+    bare legacy id."""
+    from config.inference_providers import instance_model_pricing, split_model_id
+
+    wire_id = split_model_id(model)[1]
+    snapshot = instance_model_pricing(wire_id)
+    if snapshot is not None:
+        entry = {"input": snapshot["prompt"], "output": snapshot["completion"]}
+        if "cache_read" in snapshot:
+            entry["cache_read"] = snapshot["cache_read"]
+        return entry
+    return _OPENROUTER_PRICING.get(wire_id)
 
 
 def _rates_for(entry: dict, long_context: bool) -> dict:
@@ -160,7 +182,7 @@ def estimate_cost_usd(
         return cost / 1_000_000
 
     if provider == "openrouter":
-        entry = _OPENROUTER_PRICING.get(model)
+        entry = _openrouter_entry(model)
         if entry is None:
             return None
         rates = _rates_for(entry, long_context)

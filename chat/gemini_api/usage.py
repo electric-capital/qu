@@ -9,7 +9,7 @@ the loop never touches individual counters.
 from typing import Any
 
 from chat.llm.base import compute_new_input_tokens, compute_total_context_tokens
-from chat.llm.config import MODEL_REGISTRY
+from chat.llm.config import get_max_input_tokens
 
 
 class UsageAccumulator:
@@ -86,7 +86,7 @@ class UsageAccumulator:
             context_tokens = compute_total_context_tokens(
                 self.last_turn_usage, provider_name,
             )
-        max_context_tokens = MODEL_REGISTRY.get(model, {}).get("max_input_tokens", 0)
+        max_context_tokens = get_max_input_tokens(model)
 
         return {
             "input_tokens": self.top_level_input_tokens + self.sub_agent_input_tokens,

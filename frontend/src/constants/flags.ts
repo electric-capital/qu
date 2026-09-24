@@ -1,7 +1,7 @@
 // Per-conversation flags (opt-in behaviors set at the start of a conversation).
 //
 // This is a small, hand-mirrored copy of the server-side registry in
-// chat/conversation_flags.py (KNOWN_FLAGS + FLAG_LABELS). Like AVAILABLE_MODELS
+// chat/conversation_flags.py (KNOWN_FLAGS + FLAG_LABELS). Like the built-in model list
 // in constants/models.ts, the FE keeps a static mirror rather than fetching the
 // list, because the registry is tiny and server-controlled. Adding a future
 // flag therefore requires touching BOTH chat/conversation_flags.py and this file.

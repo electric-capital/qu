@@ -323,8 +323,8 @@ async def inference_endpoint(
 
     model = body.model
     if model:
-        from chat.llm.config import MODEL_REGISTRY
-        if model not in MODEL_REGISTRY:
+        from chat.llm.config import resolve_model
+        if resolve_model(model) is None:
             raise HTTPException(
                 status_code=400,
                 detail={

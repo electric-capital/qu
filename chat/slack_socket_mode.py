@@ -210,9 +210,9 @@ async def _handle_top_level_dm(
     """Create a new Slack-driven conversation and kick off a model run."""
     # Honour the user's preferred model for Slack-driven conversations.
     # Unknown/stale IDs are treated as "unset" so the server default applies.
-    from chat.llm.config import MODEL_REGISTRY
+    from chat.llm.config import resolve_model
     slack_model = (user.get("settings") or {}).get("slack_default_model")
-    if slack_model and slack_model not in MODEL_REGISTRY:
+    if slack_model and resolve_model(slack_model) is None:
         slack_model = None
 
     try:

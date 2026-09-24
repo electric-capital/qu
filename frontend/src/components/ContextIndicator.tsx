@@ -7,7 +7,7 @@
  */
 
 import React from 'react';
-import { AVAILABLE_MODELS } from '../constants/models';
+import { getModelInfo } from '../constants/models';
 import './ContextIndicator.css';
 
 interface ContextIndicatorProps {
@@ -50,8 +50,7 @@ export const ContextIndicator = React.memo(function ContextIndicator({
   // Determine max context: prefer stats-reported value, fall back to model constant
   let effectiveMax = maxContextTokens;
   if (effectiveMax == null || effectiveMax === 0) {
-    const modelEntry = AVAILABLE_MODELS.find(m => m.id === modelId);
-    effectiveMax = modelEntry?.maxInputTokens ?? null;
+    effectiveMax = getModelInfo(modelId)?.maxInputTokens ?? null;
   }
 
   // If we still don't have a max, don't render

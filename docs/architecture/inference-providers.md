@@ -2,60 +2,110 @@
 
 ## Overview
 
-Admin-only Settings > Inference Providers panel for LLM backend configuration. It surfaces two kinds of providers:
+Admin-only Settings > Inference Providers panel for LLM backend configuration. It manages two kinds of provider configuration:
 
-- **API-key providers** (one registered today: **OpenRouter** (`openrouter`), serving the `backend: "openrouter"` models in `MODEL_REGISTRY` -- see [LLM Providers -- OpenRouterProvider](llm-providers.md#openrouterprovider); the Gemini API provider was removed when all Gemini models moved to Vertex, because thought signatures are not portable across the Vertex / AI Studio border and mixing backends broke mid-conversation model switches; the registry and generic machinery also serve future direct Anthropic/OpenAI APIs).
+- **Vertex AI** (exactly one). Credentials are display-only -- the panel shows what was detected from the environment (a `GOOGLE_APPLICATION_CREDENTIALS` service-account key or the gcloud ADC file) plus the effective `vertex_project_id`/`vertex_region` per model family and which layer each value came from (env var, `server_config.json`, or the gemini_vertex → anthropic project fallback). Its model catalog is the fixed `MODEL_REGISTRY` (`chat/llm/config.py`, Gemini + Claude); the one piece of admin state is which of those models are **enabled** (checkbox per model, stored as a disabled set). A disabled model is hidden from the picker and never health-checked; existing conversations keep running on it.
 
-  Their key is saved from the UI into a per-provider store at `DATA_DIR / "inference_credentials"` (one `<provider>.json`, 0600/0700, atomic writes, encrypted at rest in the same `{"encrypted": ...}` wrapper as the service-credential store with `encrypt_plaintext_inference_files()` sweeping pre-baked plaintext files -- see [Encryption at Rest](encryption-at-rest.md)), and
-- **Vertex AI**, which is display-only -- the panel shows what was detected from the environment (a `GOOGLE_APPLICATION_CREDENTIALS` service-account key or the gcloud ADC file) plus the effective `vertex_project_id`/`vertex_region` per model family and which layer each value came from (env var, `server_config.json`, or the gemini_vertex → anthropic project fallback). Vertex configuration is not editable here.
+- **Provider instances** (zero or more): each is one configuration of an API-key provider kind -- today the only kind is `openrouter`, powering the `OpenRouterProvider` (see [LLM Providers -- OpenRouterProvider](llm-providers.md#openrouterprovider)) -- with an admin-chosen label, its own API key, and its own admin-chosen model list. Several instances of the same kind can coexist (a personal and a team OpenRouter key with different curated models); the "+ Add OpenRouter configuration" button at the bottom of the section creates one. Models are added per instance from a typeahead over the OpenRouter catalog (or typed in as a custom id) and carry the same enable checkbox. Local inference is the expected next kind (`INSTANCE_KINDS` in `config/inference_providers.py` is the registry) and is not supported yet.
 
-Because `get_available_models()` re-reads config and the health store on every call, saving a key takes effect without a restart.
+Every model row shows the **real model id string used in API calls** (the Vertex publisher id such as `claude-haiku-4-5`, or the OpenRouter wire id such as `deepseek/deepseek-v4-flash-0731`) as its primary label, the friendly name muted beside it, and a liveness dot for the stored health verdict.
 
-The PUT handler drops cached SDK clients (`reset_provider_client_caches()`) and schedules background health rechecks for that backend's models (`schedule_model_rechecks()`), so models hidden by a failing verdict recorded under the old key reappear in the picker as soon as a check under the new key passes.
+### Qualified model ids
 
-(A provider may declare a `legacy_section` of `server_credentials.json` read as a fallback until a key is saved through the UI; OpenRouter declares none.) In local mode, the shared parent-directory `dev-config.json` can pre-bake keys into the store via its `inference_credentials` mapping (see [Run Modes](run-modes.md)).
+Models served by an instance are identified everywhere -- `conversations.model`, `routines.model`, the per-user `default_model` / `slack_default_model` settings, the health store, `llm_calls_openrouter.model` -- by `<instance_id>:<wire_id>`, e.g. `openrouter:deepseek/deepseek-v4-flash-0731`. Instance ids match `INSTANCE_ID_RE` (`[a-z0-9-]`, no `:` or `/`) while every OpenRouter wire id contains a `/` before any `:variant` suffix, so `split_model_id()` is unambiguous. Vertex ids stay bare. The single pre-instances OpenRouter configuration is instance `openrouter` (its credential file was already `openrouter.json`); alembic migration `b8e4d2a7c1f5` prefixed the bare ids stored before instances existed, and `resolve_model()` still maps a bare OpenRouter id onto that instance as a fallback. See [LLM Providers -- Model resolution](llm-providers.md#model-resolution).
+
+### Storage
+
+Non-secret configuration lives in `DATA_DIR / "inference_providers.json"` (`load_inference_config()` / `save_inference_config()`, normalized on read and write, atomic writes like `feature_gates.json`):
+
+```json
+{
+  "version": 1,
+  "vertex": {"disabled_models": ["claude-opus-4-6"]},
+  "instances": [
+    {"id": "openrouter", "kind": "openrouter", "label": "OpenRouter",
+     "models": [{"id": "deepseek/deepseek-v4-flash-0731", "enabled": true,
+                 "name": "DeepSeek: DeepSeek V4 Flash", "context_length": 1310720,
+                 "max_completion_tokens": 384000,
+                 "pricing": {"prompt": 0.15, "completion": 0.6, "cache_read": 0.003}}]}
+  ]
+}
+```
+
+Per-model `name` / `context_length` / `max_completion_tokens` / `pricing` ($ per 1M tokens) are a **snapshot** taken from the OpenRouter catalog when the model is added, so nothing at request time depends on the catalog: the limits feed the `ModelSpec` (output capped at `MAX_INSTANCE_OUTPUT_TOKENS`), the pricing feeds `db/llm_pricing.py` (`instance_model_pricing()`, looked up by wire id with the static `_OPENROUTER_PRICING` table as the fallback for models no instance lists any more). A custom id the catalog does not list gets `name = id`, `DEFAULT_INSTANCE_CONTEXT_LENGTH` / `DEFAULT_INSTANCE_MAX_OUTPUT_TOKENS` and no pricing ("no estimate" in dashboards).
+
+API keys live in one file per instance under `DATA_DIR / "inference_credentials" / "<instance_id>.json"` (0600/0700, atomic writes, encrypted at rest in the same `{"encrypted": ...}` wrapper as the service-credential store with `encrypt_plaintext_inference_files()` sweeping pre-baked plaintext files -- see [Encryption at Rest](encryption-at-rest.md)). The instance id IS the credential file stem: `load_inference_config()` synthesizes (and persists) an instance entry for every credential file that has none -- the legacy `openrouter.json` becomes the `openrouter` instance seeded with the historical curated models (`_LEGACY_OPENROUTER_MODELS`), any other id an empty OpenRouter instance -- which is also how the local-mode dev-config `inference_credentials` pre-baking works (see [Run Modes](run-modes.md)). Deleting an instance deletes its credential file too, otherwise the next load would resurrect it.
+
+Because `get_available_models()` re-reads the config, the credential store and the health store on every call, every save takes effect without a restart.
+
+### OpenRouter catalog cache
+
+`chat/llm/openrouter_catalog.py` fetches `https://openrouter.ai/api/v1/models` (public, no key) and caches the normalized list (`id`, `name`, `context_length`, `top_provider.max_completion_tokens`, per-token prices converted to $/1M) in `DATA_DIR / "openrouter_catalog.json"` for 24 hours. `get_catalog()` serves the cache while fresh, re-fetches otherwise (or on `refresh`), and on a failed fetch returns the stale cache -- or an empty list when there never was one -- with the error alongside, so the UI degrades to custom-id entry. `search_catalog()` (substring on id/name, id-prefix hits first) backs the typeahead; `catalog_snapshot()` produces the per-model snapshot on add.
 
 ## Model Health Checks (server-global)
 
-Per-model health is **server state**, not a per-request UI probe. `ModelHealthStore` (`chat/llm/health.py`) keeps the latest verdict per model -- `{ok, error, checked_at}` -- in memory, mirrored atomically to `data/model_health.json` (`MODEL_HEALTH_FILE` in `config/paths.py`) so it survives restarts. At startup the quest lifespan launches `run_startup_model_checks()` as a background task: it checks every model returned by `get_configured_models()` (the config-presence filter, so an unconfigured deployment runs zero checks) with concurrency bounded to 4 to avoid tripping per-project rate limits, then logs a summary.
+Per-model health is **server state**, not a per-request UI probe. `ModelHealthStore` (`chat/llm/health.py`) keeps the latest verdict per (qualified) model id -- `{ok, error, checked_at}` -- in memory, mirrored atomically to `data/model_health.json` (`MODEL_HEALTH_FILE` in `config/paths.py`) so it survives restarts. At startup the quest lifespan launches `run_startup_model_checks()` as a background task: it checks every model returned by `get_configured_models()` -- enabled, credentialed, non-deprecated; so **disabled models are never checked** and an unconfigured deployment runs zero checks -- with concurrency bounded to 4 to avoid tripping per-project rate limits, then logs a summary.
 
 The store **drives the model picker**: `get_available_models()` (what `GET /app/api/config` returns as `available_models`) is `get_configured_models()` minus every model whose latest verdict is an explicit failure. A never-checked model stays visible -- only a recorded failing check hides one, so a fresh boot or a deleted `model_health.json` can never empty the picker -- and health only filters *selection*: existing conversations and routines on an unhealthy model keep running.
 
-Recovery paths are the startup sweep (which deliberately iterates the health-blind configured list so hidden models keep being rechecked), the admin per-model Recheck, and the automatic recheck after a credential save.
+Recovery paths are the startup sweep (which deliberately iterates the health-blind configured list so hidden models keep being rechecked), the admin per-model Recheck, and the automatic background recheck (`schedule_model_rechecks()`) after an instance key/model-list save or a Vertex model being re-enabled. Verdicts of models removed from an instance (or of a deleted instance) are dropped via `ModelHealthStore.forget()`.
 
-A check is a **minimal live inference call** through the real provider instances (`check_model_access()` on each provider: 1 output token for Claude, a ~25-token cap for Gemini) -- deliberately not a metadata lookup, so it surfaces exactly what a real send would hit: a Claude model never enabled in Vertex Model Garden, bad key, wrong project/region, quota exhaustion. `check_model()` wraps the call with a 45s timeout and returns failures as data with a compact extracted error (`extract_error_message()` understands both the anthropic `body.error.message` shape and google-genai's `code`/`message` attributes, truncated to 600 chars).
+A check is a **minimal live inference call** through the real provider instances (`check_model_access()` on each provider: 1 output token for Claude and OpenRouter, a ~25-token cap for Gemini) -- deliberately not a metadata lookup, so it surfaces exactly what a real send would hit: a Claude model never enabled in Vertex Model Garden, bad key, wrong project/region, quota exhaustion. `check_model()` resolves the id with `resolve_model()` (so the right instance's provider object and key are used), wraps the call with a 45s timeout and returns failures as data with a compact extracted error (`extract_error_message()` understands both the anthropic `body.error.message` shape and google-genai's `code`/`message` attributes, truncated to 600 chars).
 
-Every provider card has a right-hand **Models** panel listing the non-deprecated `MODEL_REGISTRY` entries that provider serves (`models` on each `GET /admin/inference-providers` entry, mapped via `get_backend_for_model()`; API-key providers declare their backend with `model_backend` in `API_KEY_PROVIDERS`), each carrying its stored `status` (null if never checked).
+## Admin API
 
-Rows render the stored verdict (✓ / ✕ with the error inline, checked-at in the tooltip); Recheck buttons (per-row and Recheck-all; hidden while the family/provider is unconfigured, Vertex rows grouped into `anthropic` / `gemini_vertex` families) call `POST /admin/inference-providers/test-model` (`{model}` → `{model, ok, error, checked_at}`), which re-runs the live check **and updates the store**, so a recheck from Settings is authoritative for the whole server.
+All endpoints are admin-gated (403 otherwise, incl. while impersonating) and live in `chat/routes/admin.py`:
+
+- **GET `/admin/inference-providers`** → `{vertex, instances, kinds}`. `vertex` is the detected environment (`detail`) plus its model rows; each `instances[]` entry is `{id, kind, kind_label, label, configured, source, credentials: {api_key_set}, hint, models}` (never the key). Model rows are `{id, wire_id, display_name, family, enabled, status}` with `id` the stored/qualified id and `status` the stored verdict or null. `kinds` lists the addable instance kinds.
+- **PUT `/admin/inference-providers/vertex`** `{disabled_models}` -- full replacement of the Vertex disabled set (non-registry ids → 400 `unknown_model`); newly re-enabled configured models are rechecked in the background.
+- **POST `/admin/inference-providers/instances`** `{kind, label?}` -- adds an empty instance with a server-generated id (`openrouter`, `openrouter-2`, ...; orphaned credential files count as taken); unknown kinds → 400 `unknown_kind`.
+- **PUT `/admin/inference-providers/instances/{id}`** `{label?, api_key?, models?}` -- omitted = keep; empty `api_key` keeps the stored key (400 `invalid_params` when there is nothing to keep and nothing else to save); `models` is a full-replacement `[{id, enabled}]` list of wire ids in display order, new entries snapshotted from the cached catalog, removed entries' health verdicts dropped. A key change drops cached SDK clients; either change schedules rechecks of the instance's configured models.
+- **DELETE `/admin/inference-providers/instances/{id}`** -- removes the config entry, the credential file, the cached provider object and the models' verdicts. Conversations referencing its models keep their ids and fail at their next send with a clear not-configured error, like after a revoked key.
+- **GET `/admin/inference-providers/openrouter/catalog?q=&limit=&refresh=`** -- typeahead candidates `{models, fetched_at, stale, error}`.
+- **POST `/admin/inference-providers/test-model`** `{model}` → `{model, ok, error, checked_at}` -- live recheck that updates the store (unknown → 404, disabled → 400 `model_disabled`; a bare legacy OpenRouter id is recorded under its qualified id).
+
+## Frontend
+
+`frontend/src/components/settings/InferenceProvidersSection.tsx` renders the Vertex card (environment info + a Models panel grouped into the `anthropic` / `gemini_vertex` families), one card per instance (editable label, write-only API key with keep-on-empty, a Models panel with a remove `×` per row and the "Add model" combobox `AddModelCombobox` -- debounced catalog search, keyboard navigation, a "use as a custom model id" row when the typed id is not listed or the catalog is unavailable), and the footer add buttons (one per `kinds` entry). Every model row is `[checkbox] wire_id  display name  ● [Recheck]`: the checkbox saves immediately (Vertex: the disabled set; instance: the full model list), the dot is grey / green / red for never-checked / responding / failing (a spinner while checking, the extracted error inline under a failing row), and both the dot and Recheck are hidden while the model is disabled or its provider is unconfigured. "Recheck all" covers only enabled, configured models. API types are in `frontend/src/api/types.ts`, client functions in `frontend/src/api/client.ts`.
 
 ## Key Files
 
 | File | Description |
 |------|-------------|
-| `config/inference_providers.py` | `API_KEY_PROVIDERS` registry, store read/write, `effective_api_key()` (store then legacy), and `vertex_environment_status()` (credential detection + per-section config sources) |
-| `config/paths.py` | `INFERENCE_CREDENTIALS_DIR` constant |
-| `chat/llm/config.py` | `reset_provider_client_caches()`; `get_configured_models()` (config-presence) and the health-filtered `get_available_models()` on top of it, both re-evaluated per call |
-| `chat/llm/gemini_provider.py` | `GeminiProvider.reset_cached_clients()` (in-flight sessions keep the old client); `check_model_access()` minimal generate call |
+| `config/inference_providers.py` | `INSTANCE_KINDS`, qualified-id helpers (`split_model_id`, `qualify_model_id`, `canonical_model_id`), the per-instance credential store (`read/write/delete_inference_credentials`, `effective_api_key`, `encrypt_plaintext_inference_files`), the provider configuration store (`load/save_inference_config`, `get_instance`, `upsert_instance`, `delete_instance`, `new_instance_id`, `set_vertex_disabled_models`, `instance_model_pricing`) with the legacy-layout bootstrap, and `vertex_environment_status()` |
+| `config/paths.py` | `INFERENCE_CREDENTIALS_DIR`, `INFERENCE_PROVIDERS_FILE`, `OPENROUTER_CATALOG_FILE`, `MODEL_HEALTH_FILE` |
+| `chat/llm/config.py` | `ModelSpec` + `resolve_model()` / `list_model_specs()` / `public_model_catalog()`; `get_configured_models()` (enabled + credentialed) and the health-filtered `get_available_models()` on top of it; `(provider, instance_id)`-keyed `get_provider_instance()`, `drop_provider_instance()`, `reset_provider_client_caches()` |
+| `chat/llm/openrouter_catalog.py` | Cached OpenRouter catalog fetch, `search_catalog()`, `catalog_snapshot()` |
+| `chat/llm/openrouter_provider.py` | `OpenRouterProvider(instance_id)`: per-instance key, `reset_cached_clients()`, `check_model_access()` minimal `chat.completions.create` call (`max_tokens=1`) |
+| `chat/llm/gemini_provider.py` | `GeminiProvider.reset_cached_clients()`; `check_model_access()` minimal generate call |
 | `chat/llm/anthropic_provider.py` | `check_model_access()` minimal `messages.create` call (`max_tokens=1`) |
-| `chat/llm/openrouter_provider.py` | `OpenRouterProvider.reset_cached_clients()`; `check_model_access()` minimal `chat.completions.create` call (`max_tokens=1`) |
-| `chat/llm/health.py` | `check_model()` (timeout, never raises for provider failures), `extract_error_message()`, `ModelHealthStore` + `get_model_health_store()` singleton, `run_startup_model_checks()` lifespan entry, `schedule_model_rechecks()` fire-and-forget recheck (used after credential saves) |
+| `chat/llm/health.py` | `check_model()` (resolves the spec, timeout, never raises for provider failures), `extract_error_message()`, `ModelHealthStore` (+ `forget()`) and `get_model_health_store()` singleton, `run_startup_model_checks()` lifespan entry, `schedule_model_rechecks()` |
+| `alembic/versions/b8e4d2a7c1f5_qualify_openrouter_model_ids.py` | Data migration prefixing bare OpenRouter ids in `conversations.model`, `routines.model` and the `users.settings` defaults with `openrouter:` |
+| `db/llm_pricing.py` | `_openrouter_entry()`: instance pricing snapshot by wire id, static table fallback |
 | `quest.py` | Lifespan starts (and cancels on shutdown) the background startup check task |
-| `chat/routes/admin.py` | `GET /admin/inference-providers` (Vertex detected entry + masked API-key entries, each with `models` incl. stored `status`), `PUT /admin/inference-providers/{provider}` (empty key = keep; `vertex` is `not_editable`; schedules background health rechecks for the backend's models), and `POST /admin/inference-providers/test-model` (live per-model recheck, updates the store) |
-| `frontend/src/components/settings/InferenceProvidersSection.tsx` | Renders cards by `kind` (`detected` / `api_key`), reusing the card chrome exported by `ServiceCredentialsSection.tsx`; full-width two-column card body with the shared Models panel showing stored verdicts + Recheck; API types in `frontend/src/api/types.ts`, client functions in `frontend/src/api/client.ts` |
-| `tests/test_inference_providers.py` | Store, precedence, detection, admin-endpoint, model-list, and health-check tests |
+| `chat/routes/admin.py` | The admin endpoints above |
+| `chat/routes/user.py` | `GET /app/api/config` `available_models` + `models` |
+| `frontend/src/components/settings/InferenceProvidersSection.tsx` | Vertex card, instance cards, model rows, catalog combobox, add buttons |
+| `frontend/src/constants/models.ts` | Runtime model catalog fed by `setModelCatalog()` (see [Frontend](frontend.md)) |
+| `tests/test_inference_providers.py` | Id helpers, stores, bootstrap, resolution, configured/available models, pricing snapshots, catalog cache, admin endpoints, health checks |
 
-## Adding a Provider
+## Adding a Provider Kind
 
-Adding a future API-key provider (direct Anthropic API, OpenAI) is a registry entry in `API_KEY_PROVIDERS` -- the admin endpoints and the settings UI render every registered provider generically. Only wiring the key into the corresponding SDK client construction is provider-specific work. OpenRouter is the worked example: its registry entry declares `model_backend: "openrouter"`, and `OpenRouterProvider._get_client()` reads the key via `effective_api_key("openrouter")`.
+A future API-key kind (local inference, a direct Anthropic/OpenAI API) is an `INSTANCE_KINDS` entry naming its LLMProvider implementation and analytics backend label, plus a `get_provider_instance()` branch constructing that provider with the instance id. The stores, the admin endpoints, the settings cards and the add-button footer are all driven by the registry. Instance-specific fields beyond the API key (e.g. a base URL) would extend the instance entry and the PUT body.
 
 ## Design Decisions
 
+**Why qualified model ids instead of a separate instance column?**
+The model id is already the universal key -- conversation and routine rows, per-user defaults, the health store, analytics rows, the frontend catalog -- so folding the instance into it keeps every one of those paths unchanged and the migration a pure string prefix. A separate column would have had to be threaded through the WebSocket send path, the scheduler, sub-agent spawning and analytics.
+
+**Why snapshot catalog metadata instead of reading the catalog at request time?**
+Sends must not depend on openrouter.ai being reachable, and pricing must stay stable for the rows already recorded. The snapshot is refreshed only when the admin adds the model again.
+
 **Why is Vertex read-only in the panel?**
-Vertex auth is ambient (ADC/env), typically provisioned by `run.py`, the prod bootstrap, or deployment tooling, and consumed by Google SDKs outside the app's control; the panel's job is to make the detected state visible, not to own it. Metadata-server credentials (GCE instance service accounts) are intentionally not probed to keep the settings request free of network calls, and the card says so.
+Vertex auth is ambient (ADC/env), typically provisioned by `run.py`, the prod bootstrap, or deployment tooling, and consumed by Google SDKs outside the app's control; the panel's job is to make the detected state visible, not to own it. Metadata-server credentials (GCE instance service accounts) are intentionally not probed to keep the settings request free of network calls, and the card says so. Enabling/disabling individual Vertex models is app state, so that part is editable.
 
 **Why a store separate from `service_credentials/`?**
-Inference providers are not upstream data integrations: they have their own registry, a different form shape (bare API key vs OAuth client), and their own settings section. Sharing the directory would leak them into the Service Credentials list endpoint, which iterates `KNOWN_SERVICES`. The file format and atomic-write scheme are deliberately identical.
+Inference providers are not upstream data integrations: they have their own instance registry, a different form shape (bare API key vs OAuth client), and their own settings section. Sharing the directory would leak them into the Service Credentials list endpoint, which iterates `KNOWN_SERVICES`. The file format and atomic-write scheme are deliberately identical.
 
 **Why is the API key write-only with empty-means-keep?**
-Same reasoning as service credentials: the browser never needs the key back, and an empty save keeps (or migrates a legacy) key -- see [Service Credentials](service-credentials.md).
+Same reasoning as service credentials: the browser never needs the key back, and an empty save keeps the stored key -- see [Service Credentials](service-credentials.md).

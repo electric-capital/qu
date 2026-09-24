@@ -84,20 +84,17 @@ async def check_model(model_id: str) -> dict:
     extracted message (None on success). Never raises for provider or
     configuration failures -- those are the interesting results.
     """
-    from chat.llm.config import (
-        MODEL_REGISTRY,
-        get_provider_for_model,
-        get_provider_instance,
-    )
+    from chat.llm.config import get_provider_instance, resolve_model
 
-    if model_id not in MODEL_REGISTRY:
+    spec = resolve_model(model_id)
+    if spec is None:
         return {
             "model": model_id,
             "ok": False,
             "error": f"Unknown model: {model_id}",
         }
     try:
-        provider = get_provider_instance(get_provider_for_model(model_id))
+        provider = get_provider_instance(spec.provider, spec.instance_id)
         await asyncio.wait_for(
             provider.check_model_access(model_id), timeout=CHECK_TIMEOUT_SECONDS
         )
@@ -203,6 +200,24 @@ class ModelHealthStore:
                     "Failed to persist model health to %s", self._path, exc_info=True
                 )
         return status
+
+    async def forget(self, model_ids: list[str]) -> None:
+        """Drop the stored verdicts for models that no longer exist
+        (removed from an instance, or the instance was deleted)."""
+        self._ensure_loaded()
+        dropped = False
+        for model_id in model_ids:
+            if self._statuses.pop(model_id, None) is not None:
+                dropped = True
+        if not dropped:
+            return
+        async with self._write_lock:
+            try:
+                self._persist()
+            except OSError:
+                logger.warning(
+                    "Failed to persist model health to %s", self._path, exc_info=True
+                )
 
     async def run_check(self, model_id: str) -> dict:
         """Run a live check and record the verdict.

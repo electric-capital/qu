@@ -45,7 +45,7 @@ from chat.gemini_api.sub_agent import (
     _run_parallel_sub_agents,
     _run_parallel_sub_agents_template,
 )
-from chat.llm.config import get_provider_for_model, get_provider_instance
+from chat.llm.config import get_provider_for_model, get_provider_instance, model_instance_id
 
 logger = logging.getLogger(__name__)
 
@@ -662,7 +662,9 @@ async def _handle_agent_task(
     # Resolve sub-agent provider (may differ from parent)
     try:
         sub_provider_name = get_provider_for_model(agent_model)
-        sub_provider = get_provider_instance(sub_provider_name)
+        sub_provider = get_provider_instance(
+            sub_provider_name, model_instance_id(agent_model),
+        )
     except ValueError:
         sub_provider = ctx.provider
 

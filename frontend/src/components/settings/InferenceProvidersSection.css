@@ -104,11 +104,22 @@
   padding: 0.1875rem 0;
 }
 
+/* Fixed column grid so the wire id, name and controls line up across rows:
+   checkbox | wire id | friendly name | controls cluster (fixed width) */
 .inf-prov-model-line {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1.3fr) minmax(0, 1fr) 8rem;
   align-items: center;
   gap: 0.5rem;
   font-size: 0.8125rem;
+}
+
+.inf-prov-model-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  min-width: 0;
 }
 
 .inf-prov-model-name {
@@ -120,26 +131,246 @@
   white-space: nowrap;
 }
 
-.inf-prov-model-box {
+.inf-prov-model-row.disabled .inf-prov-model-wire,
+.inf-prov-model-row.disabled .inf-prov-model-display {
+  color: var(--text-muted);
+}
+
+.inf-prov-model-checkbox {
+  flex: 0 0 auto;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+/* The wire id (what the API call sends) is the primary label; the
+   friendly name sits beside it, muted */
+.inf-prov-model-wire {
+  min-width: 0;
+  font-family: monospace;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inf-prov-model-display {
+  min-width: 0;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inf-prov-model-off-note {
+  text-align: right;
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+}
+
+/* Liveness indicator: grey = never checked, green = responding, red = failing */
+.inf-prov-dot {
+  flex: 0 0 auto;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+
+.inf-prov-dot.ok {
+  background: #34d399;
+}
+
+.inf-prov-dot.error {
+  background: #f87171;
+}
+
+.inf-prov-model-remove-btn {
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 0.875rem;
-  height: 0.875rem;
-  border: 1px solid var(--text-muted);
-  border-radius: 3px;
-  color: transparent;
+  padding: 0.125rem;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
 }
 
-.inf-prov-model-box.ok {
-  border-color: #34d399;
-  color: #34d399;
-}
-
-.inf-prov-model-box.error {
-  border-color: #f87171;
+.inf-prov-model-remove-btn:hover:not(:disabled) {
   color: #f87171;
+  background: var(--hover);
+}
+
+.inf-prov-model-remove-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* "Add model" typeahead on instance cards */
+.inf-prov-add-model {
+  position: relative;
+  margin-top: 0.5rem;
+}
+
+.inf-prov-add-model-input {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 0.8125rem;
+  padding: 0.375rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.inf-prov-add-model-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.inf-prov-typeahead-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  max-height: 16rem;
+  overflow-y: auto;
+  margin-top: 0.25rem;
+  background: var(--surface-overlay);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  box-shadow: var(--shadow-card);
+}
+
+.inf-prov-typeahead-option {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  padding: 0.375rem 0.625rem;
+  cursor: pointer;
+}
+
+.inf-prov-typeahead-option.active {
+  background: var(--hover);
+}
+
+.inf-prov-typeahead-id {
+  font-family: monospace;
+  font-size: 0.8125rem;
+  color: var(--text);
+  word-break: break-all;
+}
+
+.inf-prov-typeahead-meta {
+  font-size: 0.6875rem;
+  color: var(--text-secondary);
+}
+
+.inf-prov-typeahead-empty {
+  padding: 0.375rem 0.625rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.inf-prov-typeahead-warning {
+  color: #fbbf24;
+}
+
+/* Three-dot header menu on instance cards (holds the destructive action) */
+.inf-prov-kebab {
+  position: relative;
+}
+
+.inf-prov-kebab-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.inf-prov-kebab-btn:hover,
+.inf-prov-kebab-btn[aria-expanded="true"] {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.inf-prov-kebab-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 10;
+  min-width: 12rem;
+  margin-top: 0.25rem;
+  padding: 0.25rem;
+  background: var(--surface-overlay);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  box-shadow: var(--shadow-card);
+}
+
+.inf-prov-kebab-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font-size: 0.8125rem;
+  padding: 0.375rem 0.625rem;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.inf-prov-kebab-item:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.inf-prov-kebab-item.danger {
+  color: #f87171;
+}
+
+.inf-prov-kebab-item:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Section footer: one add button per instance kind */
+.inf-prov-footer {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.inf-prov-add-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.8125rem;
+  padding: 0.375rem 0.75rem;
+  border-radius: 6px;
+  border: 1px dashed var(--border-strong);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.inf-prov-add-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
+.inf-prov-add-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .inf-prov-model-spinner {
@@ -191,14 +422,21 @@
     color: #b45309;
   }
 
-  .inf-prov-model-box.ok {
-    border-color: #059669;
-    color: #059669;
+  .inf-prov-dot.ok {
+    background: #059669;
   }
 
-  .inf-prov-model-box.error {
-    border-color: #dc2626;
+  .inf-prov-dot.error {
+    background: #dc2626;
+  }
+
+  .inf-prov-model-remove-btn:hover:not(:disabled),
+  .inf-prov-kebab-item.danger {
     color: #dc2626;
+  }
+
+  .inf-prov-typeahead-warning {
+    color: #b45309;
   }
 
   .inf-prov-model-error {

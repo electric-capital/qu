@@ -6,7 +6,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { createRoutine, ApiClientError } from '../api/client';
 import type { Guide } from '../api/types';
 import { useConversationContext } from '../contexts/ConversationContext';
-import { SELECTABLE_MODELS } from '../constants/models';
+import { getSelectableModels } from '../constants/models';
 import { ModalShell } from './ModalShell';
 import './NewRoutineModal.css';
 
@@ -151,7 +151,7 @@ export function NewRoutineModal({ isOpen, projectId, onClose, onRoutineCreated }
           onChange={(e) => setModel(e.target.value)}
           disabled={isCreating}
         >
-          {SELECTABLE_MODELS.map((m) => (
+          {getSelectableModels().map((m) => (
             <option key={m.id} value={m.id}>{m.name}</option>
           ))}
         </select>

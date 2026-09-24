@@ -18,9 +18,8 @@
  */
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { AVAILABLE_MODELS, RECOMMENDED_MODELS, getModelDisplayName, isDeprecatedModel } from '../constants/models';
-
-type ModelInfo = (typeof AVAILABLE_MODELS)[number];
+import { RECOMMENDED_MODELS, getModelDisplayName, isDeprecatedModel } from '../constants/models';
+import type { ModelInfo } from '../constants/models';
 
 export interface ModelSelectorProps {
   /** Currently selected model id ('' allowed in the read-only case). */

@@ -1,9 +1,22 @@
-"""Provider configuration, model registry, and credential loading.
+"""Provider configuration, model registry, and model resolution.
 
-Maps model IDs to providers and manages provider singleton instances.
+Maps model ids to ``ModelSpec`` records (provider, wire id, limits, per-model
+knobs) and manages provider singleton instances. Two model sources feed the
+same resolver:
+
+- the fixed Vertex catalog below (``MODEL_REGISTRY``: every Gemini and
+  Anthropic model, bare ids), filtered by the admin's Vertex disabled set;
+- admin-configured provider instances (``config/inference_providers.py``:
+  today OpenRouter configurations, each with its own key and model list),
+  whose models carry qualified ids ``<instance_id>:<wire_id>``.
+
+Consumers should go through :func:`resolve_model` / the helper functions
+rather than indexing ``MODEL_REGISTRY`` directly, so instance models
+resolve too.
 """
 
 import logging
+from dataclasses import dataclass, field
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -13,8 +26,10 @@ logger = logging.getLogger(__name__)
 # Model registry
 # ---------------------------------------------------------------------------
 
-# All models (Gemini and Anthropic) run on Vertex AI, auth via ADC +
-# project/region. The Gemini developer-endpoint ("genapi") transport was
+# The fixed Vertex catalog: every Gemini and Anthropic model runs on Vertex
+# AI, auth via ADC + project/region. OpenRouter (and future API-key) models
+# are NOT in here -- they live in admin-configured provider instances
+# (config/inference_providers.py) and resolve through resolve_model(). The Gemini developer-endpoint ("genapi") transport was
 # removed: thought signatures are not portable across the Vertex / AI
 # Studio border, so mixing backends in one conversation history broke
 # mid-conversation model switches with signature-validation errors.
@@ -195,123 +210,247 @@ MODEL_REGISTRY: dict[str, dict[str, Any]] = {
         # reasoning_extraction). Same client-side refusal-fallback chain.
         "refusal_fallback_models": ["claude-opus-4-8"],
     },
-    # OpenRouter-served models (provider "openrouter", backend "openrouter"):
-    # the curated set Quest supports on OpenRouter for personal deployments.
-    # Registry keys are the OpenRouter model ids verbatim; an
-    # ``openrouter_model_id`` entry can override the wire id if the two ever
-    # need to diverge (mirroring ``vertex_model_id``). Configured-ness comes
-    # from the OpenRouter API key in the inference-credential store, not from
-    # Vertex project config.
-    # Context/output limits from OpenRouter's model catalog
-    # (context_length 1,310,720; max_completion_tokens 384,000 -- capped
-    # lower here in line with the other registry entries).
-    "deepseek/deepseek-v4-flash-0731": {
-        "provider": "openrouter",
-        "backend": "openrouter",
-        # The date suffix is DeepSeek's snapshot version -- keep it in the
-        # display name so users can tell snapshots apart as more are added.
-        "display_name": "DeepSeek V4 Flash 0731",
-        "max_input_tokens": 1_310_720,
-        "max_output_tokens": 64_000,
-    },
-    # Context/output limits from OpenRouter's model catalog (context_length
-    # 1,000,000; max_completion_tokens 131,072 -- capped lower in line with
-    # the other registry entries).
-    "qwen/qwen3.8-27b": {
-        "provider": "openrouter",
-        "backend": "openrouter",
-        "display_name": "Qwen3.8 27B",
-        "max_input_tokens": 1_000_000,
-        "max_output_tokens": 64_000,
-    },
 }
 
 
-def get_provider_for_model(model_id: str) -> str:
-    """Return the provider name for a given model ID.
+# ---------------------------------------------------------------------------
+# Model resolution
+# ---------------------------------------------------------------------------
 
-    Args:
-        model_id: Model identifier string (e.g. 'gemini-3.1-pro-preview').
+# Vertex model families, keyed by LLMProvider name, with the server_config
+# section that must carry a project id for the family to count as
+# configured and the label shown in pickers/admin cards.
+VERTEX_FAMILIES: dict[str, dict[str, str]] = {
+    "anthropic": {"section": "anthropic", "label": "Claude on Vertex"},
+    "gemini": {"section": "gemini_vertex", "label": "Gemini on Vertex"},
+}
+
+
+@dataclass(frozen=True)
+class ModelSpec:
+    """Everything the app needs to know about one selectable model.
+
+    ``id`` is the stored/qualified id (what conversations, routines and
+    user defaults carry); ``wire_id`` is what goes in the API request.
+    ``enabled`` reflects the admin toggle (Vertex disabled set / instance
+    model flag); ``listed`` is False for an instance model the admin has
+    removed from its instance but that old conversations still reference.
+    """
+    id: str
+    wire_id: str
+    provider: str
+    backend: str
+    display_name: str
+    provider_label: str
+    max_input_tokens: int
+    max_output_tokens: int
+    instance_id: str | None = None
+    deprecated: bool = False
+    enabled: bool = True
+    listed: bool = True
+    vertex_region: str | None = None
+    thinking_effort: str | None = None
+    refusal_fallback_models: tuple[str, ...] = field(default_factory=tuple)
+
+    @property
+    def family(self) -> str | None:
+        """Vertex family key (``anthropic`` / ``gemini_vertex``); None otherwise."""
+        if self.instance_id is not None:
+            return None
+        return VERTEX_FAMILIES[self.provider]["section"]
+
+
+def _vertex_spec(model_id: str, entry: dict, disabled: set[str]) -> ModelSpec:
+    provider = entry["provider"]
+    return ModelSpec(
+        id=model_id,
+        wire_id=entry.get("vertex_model_id", model_id),
+        provider=provider,
+        backend="vertex",
+        display_name=entry.get("display_name", model_id),
+        provider_label=VERTEX_FAMILIES[provider]["label"],
+        max_input_tokens=entry.get("max_input_tokens", 0),
+        max_output_tokens=entry.get("max_output_tokens", 8192),
+        deprecated=bool(entry.get("deprecated")),
+        enabled=model_id not in disabled,
+        vertex_region=entry.get("vertex_region"),
+        thinking_effort=entry.get("thinking_effort"),
+        refusal_fallback_models=tuple(entry.get("refusal_fallback_models") or ()),
+    )
+
+
+def _instance_spec(instance: dict, model: dict | None, wire_id: str) -> ModelSpec:
+    from config.inference_providers import (
+        DEFAULT_INSTANCE_CONTEXT_LENGTH,
+        DEFAULT_INSTANCE_MAX_OUTPUT_TOKENS,
+        INSTANCE_KINDS,
+        MAX_INSTANCE_OUTPUT_TOKENS,
+        qualify_model_id,
+    )
+
+    kind = INSTANCE_KINDS[instance["kind"]]
+    model = model or {}
+    max_output = model.get("max_completion_tokens") or DEFAULT_INSTANCE_MAX_OUTPUT_TOKENS
+    return ModelSpec(
+        id=qualify_model_id(instance["id"], wire_id),
+        wire_id=wire_id,
+        provider=kind["provider"],
+        backend=kind["backend"],
+        display_name=model.get("name") or wire_id,
+        provider_label=instance["label"],
+        max_input_tokens=model.get("context_length") or DEFAULT_INSTANCE_CONTEXT_LENGTH,
+        max_output_tokens=min(max_output, MAX_INSTANCE_OUTPUT_TOKENS),
+        instance_id=instance["id"],
+        enabled=bool(model) and model.get("enabled", True),
+        listed=bool(model),
+    )
+
+
+def resolve_model(model_id: str) -> ModelSpec | None:
+    """Resolve any stored model id to its spec; None when unknown.
+
+    Order: the Vertex registry (bare ids), then ``<instance_id>:<wire_id>``
+    against the configured instances (a model the instance no longer lists
+    still resolves, unlisted and disabled, so old conversations keep their
+    provider), then a bare legacy OpenRouter id mapped onto the
+    ``openrouter`` instance. An id whose instance does not exist is unknown.
+    """
+    from config.inference_providers import (
+        canonical_model_id,
+        get_instance,
+        split_model_id,
+        vertex_disabled_models,
+    )
+
+    if not isinstance(model_id, str) or not model_id:
+        return None
+    entry = MODEL_REGISTRY.get(model_id)
+    if entry is not None:
+        return _vertex_spec(model_id, entry, vertex_disabled_models())
+    instance_id, wire_id = split_model_id(canonical_model_id(model_id))
+    if instance_id is None:
+        return None
+    instance = get_instance(instance_id)
+    if instance is None:
+        return None
+    listed = next((m for m in instance["models"] if m["id"] == wire_id), None)
+    return _instance_spec(instance, listed, wire_id)
+
+
+def list_model_specs() -> list[ModelSpec]:
+    """Every known model: registry order, then each instance's models in
+    admin order. Includes deprecated and disabled models (for lookups)."""
+    from config.inference_providers import load_inference_config
+
+    config = load_inference_config()
+    disabled = set(config["vertex"]["disabled_models"])
+    specs = [_vertex_spec(mid, entry, disabled) for mid, entry in MODEL_REGISTRY.items()]
+    for instance in config["instances"]:
+        for model in instance["models"]:
+            specs.append(_instance_spec(instance, model, model["id"]))
+    return specs
+
+
+def get_provider_for_model(model_id: str) -> str:
+    """Return the provider name for a model id.
 
     Returns:
         Provider name string: 'gemini', 'anthropic', or 'openrouter'.
 
     Raises:
-        ValueError: If the model ID is not in the registry.
+        ValueError: If the model id is unknown.
     """
-    entry = MODEL_REGISTRY.get(model_id)
-    if not entry:
+    spec = resolve_model(model_id)
+    if spec is None:
         raise ValueError(
             f"Unknown model: {model_id}. "
-            f"Valid models: {list(MODEL_REGISTRY.keys())}"
+            f"Valid models: {[s.id for s in list_model_specs() if not s.deprecated]}"
         )
-    return entry["provider"]
+    return spec.provider
 
 
 def get_backend_for_model(model_id: str) -> str | None:
-    """Return the SDK transport backend for a given model ID.
+    """Return the SDK transport backend label for cost analytics.
 
-    Used for cost analytics: the same logical model can be billed differently
-    depending on the backend. Vertex-served models (all Gemini and Anthropic
-    models; the Gemini ``"genapi"`` transport was removed) resolve to
-    ``"vertex"``; OpenRouter-served models resolve to ``"openrouter"``.
-    Historical analytics rows recorded under ``"genapi"`` keep that label in
-    the DB.
-
-    Returns ``None`` for unknown models so callers can record without raising.
+    Vertex-served models (all Gemini and Anthropic models) resolve to
+    ``"vertex"``; instance-served models to their kind's backend label
+    (``"openrouter"``). Historical analytics rows recorded under ``"genapi"``
+    keep that label in the DB. ``None`` for unknown models so callers can
+    record without raising.
     """
-    entry = MODEL_REGISTRY.get(model_id)
-    if not entry:
-        return None
-    if entry.get("provider") == "anthropic":
-        return "vertex"
-    return entry.get("backend", "vertex")
+    spec = resolve_model(model_id)
+    return spec.backend if spec else None
+
+
+def get_model_display_name(model_id: str) -> str:
+    """Human-readable name, falling back to the raw id for unknown models."""
+    spec = resolve_model(model_id)
+    return spec.display_name if spec else model_id
+
+
+def get_max_input_tokens(model_id: str) -> int:
+    """Context-window ceiling, 0 for unknown models."""
+    spec = resolve_model(model_id)
+    return spec.max_input_tokens if spec else 0
+
+
+def model_instance_id(model_id: str) -> str | None:
+    """The instance qualifier of a stored model id (None for Vertex ids and
+    bare legacy OpenRouter ids). A pure parse -- never raises -- so call
+    sites can pass it to :func:`get_provider_instance` unconditionally."""
+    from config.inference_providers import split_model_id
+
+    return split_model_id(model_id)[0]
+
+
+def _instance_credentialed(instance_id: str, cache: dict[str, bool]) -> bool:
+    from config.inference_providers import effective_api_key
+
+    if instance_id not in cache:
+        cache[instance_id] = bool(effective_api_key(instance_id)[0])
+    return cache[instance_id]
 
 
 def get_configured_models() -> list[str]:
-    """Return the model IDs whose backend credentials appear configured.
+    """Return the model ids that are enabled AND whose credentials appear
+    configured.
 
     This is a config-presence check, not a live probe:
 
-    - Gemini models need ``gemini_vertex.vertex_project_id``.
-    - Anthropic models need ``anthropic.vertex_project_id``.
-    - OpenRouter models need an OpenRouter API key in the
-      inference-credential store (Settings > Inference Providers).
+    - Vertex models need their family's ``vertex_project_id`` (Gemini:
+      ``gemini_vertex``, Anthropic: ``anthropic``) and must not be in the
+      admin's Vertex disabled set.
+    - Instance models need the instance's API key in the credential store
+      and their per-model ``enabled`` flag.
 
-    Models flagged ``deprecated`` in MODEL_REGISTRY are excluded regardless of
-    credentials: they are still runnable (existing conversations/routines keep
-    working) but must not be offered for new selection.
+    Deprecated Vertex models are excluded regardless: they are still
+    runnable (existing conversations/routines keep working) but must not
+    be offered for new selection.
 
     This is the universe the health sweeps check (``run_startup_checks``);
     the picker goes through :func:`get_available_models`, which additionally
-    drops models with a failing health verdict. Order matches MODEL_REGISTRY.
+    drops models with a failing health verdict. Order matches
+    :func:`list_model_specs`.
     """
-    from config.inference_providers import effective_api_key
     from config.server_config import load_server_config
 
     server_config = load_server_config()
-    gemini_vertex_ok = bool(server_config["gemini_vertex"]["vertex_project_id"])
-    anthropic_ok = bool(server_config["anthropic"]["vertex_project_id"])
-    openrouter_ok = bool(effective_api_key("openrouter")[0])
-
+    key_cache: dict[str, bool] = {}
     configured = []
-    for model_id, entry in MODEL_REGISTRY.items():
-        if entry.get("deprecated"):
+    for spec in list_model_specs():
+        if spec.deprecated or not spec.enabled:
             continue
-        provider = entry["provider"]
-        if provider == "anthropic":
-            if anthropic_ok:
-                configured.append(model_id)
-        elif provider == "openrouter":
-            if openrouter_ok:
-                configured.append(model_id)
-        elif gemini_vertex_ok:
-            configured.append(model_id)
+        if spec.instance_id is None:
+            section = VERTEX_FAMILIES[spec.provider]["section"]
+            if server_config[section]["vertex_project_id"]:
+                configured.append(spec.id)
+        elif _instance_credentialed(spec.instance_id, key_cache):
+            configured.append(spec.id)
     return configured
 
 
 def get_available_models() -> list[str]:
-    """Return the model IDs that are configured AND not known-unhealthy.
+    """Return the model ids that are configured AND not known-unhealthy.
 
     Starts from :func:`get_configured_models` and drops every model whose
     latest verdict in the model-health store (``chat/llm/health.py``) is a
@@ -339,53 +478,77 @@ def get_available_models() -> list[str]:
     ]
 
 
+def public_model_catalog() -> list[dict]:
+    """Model metadata for the frontend (``models`` on GET /app/api/config).
+
+    Every known model incl. deprecated/disabled ones, so the UI can still
+    label and size old conversations; selection is governed separately by
+    ``available_models``.
+    """
+    return [
+        {
+            "id": spec.id,
+            "display_name": spec.display_name,
+            "provider": spec.provider,
+            "provider_label": spec.provider_label,
+            "max_input_tokens": spec.max_input_tokens,
+            "deprecated": spec.deprecated,
+        }
+        for spec in list_model_specs()
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Provider singletons
 # ---------------------------------------------------------------------------
 
-_provider_instances: dict[str, Any] = {}
+_provider_instances: dict[tuple[str, str | None], Any] = {}
 
 
-def get_provider_instance(provider_name: str) -> "LLMProvider":
-    """Return a singleton LLMProvider instance for the given provider name.
+def get_provider_instance(provider_name: str, instance_id: str | None = None) -> "LLMProvider":
+    """Return the LLMProvider singleton for ``(provider_name, instance_id)``.
 
-    Lazily creates provider instances on first use.
-
-    Args:
-        provider_name: 'gemini', 'anthropic', or 'openrouter'.
-
-    Returns:
-        An LLMProvider implementation instance.
+    Vertex providers (``gemini``, ``anthropic``) have a single instance and
+    ignore ``instance_id``. Instance-backed providers (``openrouter``) get
+    one object per configured instance, each reading its own API key;
+    ``instance_id=None`` selects the legacy ``openrouter`` instance so
+    callers that only know the provider name keep working. Lazily created.
 
     Raises:
         ValueError: If the provider name is unknown.
     """
+    from config.inference_providers import LEGACY_OPENROUTER_INSTANCE_ID
 
-    if provider_name in _provider_instances:
-        return _provider_instances[provider_name]
+    if provider_name in ("gemini", "anthropic"):
+        instance_id = None
+    elif provider_name == "openrouter" and instance_id is None:
+        instance_id = LEGACY_OPENROUTER_INSTANCE_ID
+
+    key = (provider_name, instance_id)
+    if key in _provider_instances:
+        return _provider_instances[key]
 
     if provider_name == "gemini":
         from chat.llm.gemini_provider import GeminiProvider
         instance = GeminiProvider()
-        _provider_instances[provider_name] = instance
-        return instance
-
-    if provider_name == "anthropic":
+    elif provider_name == "anthropic":
         from chat.llm.anthropic_provider import AnthropicProvider
         instance = AnthropicProvider()
-        _provider_instances[provider_name] = instance
-        return instance
-
-    if provider_name == "openrouter":
+    elif provider_name == "openrouter":
         from chat.llm.openrouter_provider import OpenRouterProvider
-        instance = OpenRouterProvider()
-        _provider_instances[provider_name] = instance
-        return instance
+        instance = OpenRouterProvider(instance_id)
+    else:
+        raise ValueError(
+            f"Unknown provider: {provider_name}. "
+            "Valid providers: gemini, anthropic, openrouter"
+        )
+    _provider_instances[key] = instance
+    return instance
 
-    raise ValueError(
-        f"Unknown provider: {provider_name}. "
-        "Valid providers: gemini, anthropic, openrouter"
-    )
+
+def drop_provider_instance(provider_name: str, instance_id: str | None) -> None:
+    """Forget a cached provider object (after its instance is deleted)."""
+    _provider_instances.pop((provider_name, instance_id), None)
 
 
 def reset_provider_client_caches() -> None:
@@ -402,9 +565,14 @@ def reset_provider_client_caches() -> None:
 
 
 def get_provider_for_model_instance(model_id: str) -> "LLMProvider":
-    """Convenience: return a provider instance for a model ID.
+    """Return the provider object that serves ``model_id``.
 
-    Combines get_provider_for_model() and get_provider_instance().
+    Combines :func:`resolve_model` and :func:`get_provider_instance`.
+
+    Raises:
+        ValueError: If the model id is unknown.
     """
-    provider_name = get_provider_for_model(model_id)
-    return get_provider_instance(provider_name)
+    spec = resolve_model(model_id)
+    if spec is None:
+        raise ValueError(f"Unknown model: {model_id}")
+    return get_provider_instance(spec.provider, spec.instance_id)

@@ -25,7 +25,13 @@ from chat.gemini_api.constants import (
     get_sub_agent_turn_limits,
 )
 from chat.llm.base import compute_new_input_tokens, compute_total_context_tokens
-from chat.llm.config import get_provider_for_model, get_provider_instance, get_backend_for_model, MODEL_REGISTRY
+from chat.llm.config import (
+    get_provider_for_model,
+    get_provider_instance,
+    get_backend_for_model,
+    get_max_input_tokens,
+    model_instance_id,
+)
 from chat.llm.tool_schemas import SUB_AGENT_TOOLS, SUB_AGENT_TOOLS_NESTED
 from chat.gemini_api.system_prompt import get_sub_agent_system_prompt
 from chat.gemini_api.tool_dispatch import _dispatch_tool_call
@@ -374,7 +380,9 @@ async def _run_sub_agent(
                         # Resolve the nested sub-agent's provider (may differ).
                         try:
                             nested_provider_name = get_provider_for_model(nested_model)
-                            nested_provider = get_provider_instance(nested_provider_name)
+                            nested_provider = get_provider_instance(
+                                nested_provider_name, model_instance_id(nested_model),
+                            )
                         except ValueError:
                             nested_provider = provider
 
@@ -536,7 +544,7 @@ async def _run_sub_agent(
 
         # Inject context window usage warning when nearing the model's limit
         context_tokens = compute_total_context_tokens(sub_turn_usage, sub_provider_name)
-        max_context = MODEL_REGISTRY.get(model, {}).get("max_input_tokens", 0)
+        max_context = get_max_input_tokens(model)
         if max_context > 0 and context_tokens / max_context >= SUB_AGENT_CONTEXT_WARNING_THRESHOLD:
             pct = int(context_tokens / max_context * 100)
             context_warning_text = (
@@ -735,7 +743,9 @@ async def _run_parallel_sub_agents(
         # spawning a Claude sub-agent and vice versa).
         try:
             sub_provider_name = get_provider_for_model(agent_model)
-            sub_provider = get_provider_instance(sub_provider_name)
+            sub_provider = get_provider_instance(
+                sub_provider_name, model_instance_id(agent_model),
+            )
         except ValueError:
             # Unknown model -- fall back to parent's provider
             sub_provider = provider

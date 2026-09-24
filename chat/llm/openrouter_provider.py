@@ -54,14 +54,20 @@ class OpenRouterSession:
 class OpenRouterProvider(LLMProvider):
     """LLMProvider implementation for OpenRouter's OpenAI-compatible API."""
 
-    def __init__(self):
+    def __init__(self, instance_id: str | None = None):
+        # One provider object per configured OpenRouter instance
+        # (config/inference_providers.py); each reads its own API key.
+        # None selects the legacy single-configuration instance.
+        from config.inference_providers import LEGACY_OPENROUTER_INSTANCE_ID
+
+        self.instance_id = instance_id or LEGACY_OPENROUTER_INSTANCE_ID
         self._client = None
 
     def _get_client(self):
         """Return a cached AsyncOpenAI client pointed at OpenRouter.
 
-        The API key comes from the inference-credential store (admin
-        Settings > Inference Providers), with the usual legacy fallback.
+        The API key comes from this instance's file in the
+        inference-credential store (admin Settings > Inference Providers).
         """
         if self._client is not None:
             return self._client
@@ -69,11 +75,12 @@ class OpenRouterProvider(LLMProvider):
         from openai import AsyncOpenAI
         from config.inference_providers import effective_api_key
 
-        api_key, _source = effective_api_key("openrouter")
+        api_key, _source = effective_api_key(self.instance_id)
         if not api_key:
             raise ValueError(
-                "OpenRouter API key not configured. Add it in Settings > "
-                "Inference Providers (admin only)."
+                f"OpenRouter API key not configured for instance "
+                f"'{self.instance_id}'. Add it in Settings > Inference "
+                "Providers (admin only)."
             )
         self._client = AsyncOpenAI(
             base_url=OPENROUTER_BASE_URL,
@@ -87,15 +94,10 @@ class OpenRouterProvider(LLMProvider):
         self._client = None
 
     def _get_openrouter_model_id(self, model: str) -> str:
-        """Resolve the OpenRouter model ID for a given registry model id.
-
-        Registry keys are the OpenRouter ids verbatim today (e.g.
-        ``deepseek/deepseek-v4-flash-0731``); ``openrouter_model_id`` is the
-        override hook mirroring ``vertex_model_id``.
-        """
-        from chat.llm.config import MODEL_REGISTRY
-        entry = MODEL_REGISTRY.get(model, {})
-        return entry.get("openrouter_model_id", model)
+        """Strip the instance qualifier: ``openrouter:deepseek/x`` -> the
+        OpenRouter wire id ``deepseek/x`` (bare legacy ids pass through)."""
+        from config.inference_providers import split_model_id
+        return split_model_id(model)[1]
 
     async def check_model_access(self, model: str) -> None:
         """Issue a minimal completion call to verify the model actually works.
@@ -150,9 +152,9 @@ class OpenRouterProvider(LLMProvider):
 
         session.last_usage = {}
 
-        from chat.llm.config import MODEL_REGISTRY
-        entry = MODEL_REGISTRY.get(session.model, {})
-        max_tokens = entry.get("max_output_tokens", 8192)
+        from chat.llm.config import resolve_model
+        spec = resolve_model(session.model)
+        max_tokens = spec.max_output_tokens if spec else 8192
 
         api_kwargs: dict = {
             "model": self._get_openrouter_model_id(session.model),

@@ -24,29 +24,41 @@ export interface CredentialCardStatus {
   source: 'store' | 'legacy' | null;
 }
 
-/** Card chrome shared by every service: header, badge, legacy note, body. */
+/** Card chrome shared by every service: header, badge, legacy note, body.
+ *
+ * ``hideBadge`` drops the Configured / Not configured pill (for cards whose
+ * presence already implies configuration, e.g. inference provider
+ * instances) and ``headerAction`` renders a control at the header's right
+ * edge (e.g. a kebab menu). */
 export function CredentialCard({
   fallbackLabel,
   loading,
   loadError,
   detail,
+  hideBadge = false,
+  headerAction,
   children,
 }: {
   fallbackLabel: string;
   loading: boolean;
   loadError: string;
   detail: CredentialCardStatus | null;
+  hideBadge?: boolean;
+  headerAction?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <div className="svc-cred-card">
       <div className="svc-cred-card-header">
         <h4>{detail?.label ?? fallbackLabel}</h4>
-        {!loading && !loadError && (
-          <span className={`svc-cred-badge ${detail?.configured ? 'configured' : 'unconfigured'}`}>
-            {detail?.configured ? 'Configured' : 'Not configured'}
-          </span>
-        )}
+        <div className="svc-cred-card-header-actions">
+          {!loading && !loadError && !hideBadge && (
+            <span className={`svc-cred-badge ${detail?.configured ? 'configured' : 'unconfigured'}`}>
+              {detail?.configured ? 'Configured' : 'Not configured'}
+            </span>
+          )}
+          {headerAction}
+        </div>
       </div>
       {loading ? (
         <div className="settings-loading">Loading...</div>

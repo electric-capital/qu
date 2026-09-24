@@ -825,167 +825,386 @@ async def admin_update_feature_gate(
     return _feature_gate_view(feature, gates)
 
 
-class InferenceProviderKeyUpdate(BaseModel):
-    # Empty string means "keep the currently stored key" so the masked read
-    # endpoint round-trips without ever sending the key back out.
-    api_key: str = ""
+# ---------------------------------------------------------------------------
+# Inference providers (Settings > Inference Providers)
+# ---------------------------------------------------------------------------
 
 
-def _models_for_backend(backend: str) -> list[dict]:
-    """Non-deprecated MODEL_REGISTRY entries served by ``backend``.
+def _model_view(spec, statuses: dict) -> dict:
+    """One model row for the admin cards.
 
-    ``family`` distinguishes the two Vertex model groups (Claude vs Gemini)
-    because they are configured -- and break -- independently; it is None
-    for single-family API-key providers. ``status`` is the
+    ``id`` is the stored (qualified) id, ``wire_id`` the string sent to the
+    API -- the UI shows ``wire_id`` as the primary label. ``status`` is the
     latest model-health verdict from the store (populated by the startup
     sweep and admin rechecks), or None when the model was never checked.
     """
-    from chat.llm.config import MODEL_REGISTRY, get_backend_for_model
+    return {
+        "id": spec.id,
+        "wire_id": spec.wire_id,
+        "display_name": spec.display_name,
+        "family": spec.family,
+        "enabled": spec.enabled,
+        "status": statuses.get(spec.id),
+    }
+
+
+def _vertex_status() -> dict:
+    """The Vertex card: detected environment + the fixed catalog with the
+    admin's enabled/disabled state (deprecated models omitted)."""
+    from chat.llm.config import list_model_specs
     from chat.llm.health import get_model_health_store
+    from config.inference_providers import vertex_environment_status
 
     statuses = get_model_health_store().get_all()
-    models = []
-    for model_id, entry in MODEL_REGISTRY.items():
-        if entry.get("deprecated"):
-            continue
-        if get_backend_for_model(model_id) != backend:
-            continue
-        family = None
-        if backend == "vertex":
-            family = (
-                "anthropic" if entry["provider"] == "anthropic" else "gemini_vertex"
-            )
-        models.append({
-            "id": model_id,
-            "display_name": entry.get("display_name", model_id),
-            "family": family,
-            "status": statuses.get(model_id),
-        })
-    return models
-
-
-def _api_key_provider_status(provider: str) -> dict:
-    """Status entry for one editable API-key inference provider (key masked)."""
-    from config.inference_providers import API_KEY_PROVIDERS, effective_api_key
-
-    spec = API_KEY_PROVIDERS[provider]
-    api_key, source = effective_api_key(provider)
-    backend = spec.get("model_backend")
+    vertex = vertex_environment_status()
     return {
-        "provider": provider,
-        "label": spec["label"],
-        "kind": "api_key",
+        "provider": "vertex",
+        "label": "Google Vertex AI",
+        "kind": "detected",
+        "configured": vertex["configured"],
+        "detail": vertex,
+        "models": [
+            _model_view(spec, statuses)
+            for spec in list_model_specs()
+            if spec.instance_id is None and not spec.deprecated
+        ],
+    }
+
+
+def _instance_status(instance: dict) -> dict:
+    """One provider-instance card (key masked)."""
+    from chat.llm.config import list_model_specs
+    from chat.llm.health import get_model_health_store
+    from config.inference_providers import INSTANCE_KINDS, effective_api_key
+
+    statuses = get_model_health_store().get_all()
+    kind = INSTANCE_KINDS[instance["kind"]]
+    api_key, source = effective_api_key(instance["id"])
+    return {
+        "id": instance["id"],
+        "kind": instance["kind"],
+        "kind_label": kind["label"],
+        "label": instance["label"],
         "configured": api_key is not None,
         "source": source,
         "credentials": {"api_key_set": api_key is not None},
-        "hint": spec["hint"],
-        "models": _models_for_backend(backend) if backend else [],
+        "hint": kind["hint"],
+        "models": [
+            _model_view(spec, statuses)
+            for spec in list_model_specs()
+            if spec.instance_id == instance["id"]
+        ],
     }
+
+
+def _instance_or_404(instance_id: str) -> dict:
+    from config.inference_providers import get_instance, is_valid_instance_id
+
+    instance = get_instance(instance_id) if is_valid_instance_id(instance_id) else None
+    if instance is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "unknown_instance",
+                "message": f"Unknown inference provider instance: {instance_id}",
+            },
+        )
+    return instance
 
 
 @router.get("/admin/inference-providers")
 async def admin_list_inference_providers(
     user: dict = Depends(get_current_user_cookie_or_apikey_checked),
 ):
-    """List inference providers: detected Vertex environment + API-key providers.
+    """List inference providers: the detected Vertex environment with its
+    fixed model catalog, plus every configured provider instance.
 
-    The Vertex entry is display-only (credentials and project/region are
-    detected from the environment and server_config.json); API-key entries
-    are editable via the PUT endpoint and never include the key itself.
+    The Vertex entry's credentials are display-only (detected from the
+    environment and server_config.json); its per-model enabled flags are
+    editable via PUT /admin/inference-providers/vertex. Instance entries
+    never include the key itself.
     """
     _require_admin(user)
-    from config.inference_providers import (
-        API_KEY_PROVIDERS,
-        vertex_environment_status,
-    )
+    from config.inference_providers import INSTANCE_KINDS, list_instances
 
-    vertex = vertex_environment_status()
-    providers = [{
-        "provider": "vertex",
-        "label": "Google Vertex AI",
-        "kind": "detected",
-        "configured": vertex["configured"],
-        "detail": vertex,
-        "models": _models_for_backend("vertex"),
-    }]
-    providers.extend(
-        _api_key_provider_status(provider) for provider in API_KEY_PROVIDERS
-    )
-    return {"providers": providers}
+    return {
+        "vertex": _vertex_status(),
+        "instances": [_instance_status(inst) for inst in list_instances()],
+        "kinds": [
+            {"kind": kind, "label": spec["label"]}
+            for kind, spec in INSTANCE_KINDS.items()
+        ],
+    }
 
 
-@router.put("/admin/inference-providers/{provider}")
-async def admin_update_inference_provider_key(
-    provider: str,
-    body: InferenceProviderKeyUpdate,
+class VertexModelsUpdate(BaseModel):
+    # Full replacement of the disabled set (Vertex registry ids).
+    disabled_models: list[str]
+
+
+@router.put("/admin/inference-providers/vertex")
+async def admin_update_vertex_models(
+    body: VertexModelsUpdate,
     user: dict = Depends(get_current_user_cookie_or_apikey_checked),
 ):
-    """Save an API-key inference provider's key to the per-provider store.
+    """Replace the set of Vertex models an admin has disabled.
 
-    An empty api_key keeps the currently effective key (which also moves a
-    legacy server_credentials.json key into the store). The Vertex entry is
-    not editable -- its configuration is detected from the environment.
+    Disabled models vanish from the picker and are skipped by every health
+    sweep; existing conversations keep running on them. Models that just
+    became enabled are rechecked in the background so a stale failing
+    verdict cannot keep them hidden.
     """
     _require_admin(user)
+    from chat.llm.config import MODEL_REGISTRY
+    from chat.llm.health import schedule_model_rechecks
     from config.inference_providers import (
-        API_KEY_PROVIDERS,
-        effective_api_key,
-        read_inference_credentials,
-        write_inference_credentials,
+        set_vertex_disabled_models,
+        vertex_disabled_models,
     )
 
-    if provider == "vertex":
+    unknown = sorted(set(body.disabled_models) - set(MODEL_REGISTRY))
+    if unknown:
         raise HTTPException(
             status_code=400,
             detail={
-                "error": "not_editable",
-                "message": "Vertex AI configuration is detected from the "
-                           "environment and cannot be edited here.",
-            }
+                "error": "unknown_model",
+                "message": f"Not Vertex registry models: {unknown}",
+            },
         )
-    if provider not in API_KEY_PROVIDERS:
-        raise HTTPException(
-            status_code=404,
-            detail={
-                "error": "unknown_provider",
-                "message": f"Unknown inference provider: {provider}",
-            }
-        )
+    previously_disabled = vertex_disabled_models()
+    disabled = set(set_vertex_disabled_models(body.disabled_models))
+    re_enabled = [m for m in MODEL_REGISTRY if m in previously_disabled and m not in disabled]
+    if re_enabled:
+        from chat.llm.config import get_configured_models
 
-    api_key = body.api_key.strip()
-    if not api_key:
-        api_key, _source = effective_api_key(provider)
-        if not api_key:
+        configured = set(get_configured_models())
+        schedule_model_rechecks([m for m in re_enabled if m in configured])
+    logger.info(
+        "[admin] %s set Vertex disabled models to %s", user["email"], sorted(disabled),
+    )
+    return _vertex_status()
+
+
+class InstanceCreate(BaseModel):
+    kind: str = "openrouter"
+    label: str = ""
+
+
+@router.post("/admin/inference-providers/instances")
+async def admin_create_inference_instance(
+    body: InstanceCreate,
+    user: dict = Depends(get_current_user_cookie_or_apikey_checked),
+):
+    """Add an empty provider instance (no key, no models yet).
+
+    The id is server-generated (``openrouter``, ``openrouter-2``, ...); the
+    admin then saves a key and picks models via the PUT endpoint.
+    """
+    _require_admin(user)
+    from config.inference_providers import INSTANCE_KINDS, new_instance_id, upsert_instance
+
+    if body.kind not in INSTANCE_KINDS:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "unknown_kind",
+                "message": f"Unknown inference provider kind: {body.kind}",
+            },
+        )
+    instance = upsert_instance({
+        "id": new_instance_id(body.kind),
+        "kind": body.kind,
+        "label": body.label,
+        "models": [],
+    })
+    logger.info("[admin] %s created inference instance %s", user["email"], instance["id"])
+    return _instance_status(instance)
+
+
+class InstanceModelUpdate(BaseModel):
+    id: str
+    enabled: bool = True
+
+
+class InstanceUpdate(BaseModel):
+    # Every field is optional: omitted = keep. An empty api_key also keeps
+    # the currently stored key so the masked read endpoint round-trips
+    # without ever sending the key back out.
+    label: Optional[str] = None
+    api_key: Optional[str] = None
+    # Full replacement of the model list, in display order.
+    models: Optional[list[InstanceModelUpdate]] = None
+
+
+@router.put("/admin/inference-providers/instances/{instance_id}")
+async def admin_update_inference_instance(
+    instance_id: str,
+    body: InstanceUpdate,
+    user: dict = Depends(get_current_user_cookie_or_apikey_checked),
+):
+    """Update an instance's label, API key and/or model list.
+
+    Models new to the instance get their metadata (name, context/output
+    limits, pricing) snapshotted from the cached OpenRouter catalog;
+    entries the catalog does not list are kept as custom ids with
+    conservative defaults. A key change drops cached SDK clients so the new
+    key is used on the next session, and every enabled model of the
+    instance is rechecked in the background (a failing verdict recorded
+    under the old key or before the model existed would otherwise keep it
+    hidden from the picker).
+    """
+    _require_admin(user)
+    from chat.llm.config import reset_provider_client_caches
+    from chat.llm.health import get_model_health_store, schedule_model_rechecks
+    from config.inference_providers import (
+        effective_api_key,
+        qualify_model_id,
+        read_inference_credentials,
+        upsert_instance,
+        write_inference_credentials,
+    )
+
+    instance = _instance_or_404(instance_id)
+    key_changed = False
+
+    if body.label is not None:
+        instance["label"] = body.label
+
+    if body.api_key is not None:
+        api_key = body.api_key.strip()
+        if api_key:
+            config = dict(read_inference_credentials(instance_id) or {})
+            config["api_key"] = api_key
+            write_inference_credentials(instance_id, config)
+            key_changed = True
+        elif not effective_api_key(instance_id)[0] and body.models is None and body.label is None:
             raise HTTPException(
                 status_code=400,
                 detail={
                     "error": "invalid_params",
                     "message": "api_key is required (no stored key to keep).",
-                }
+                },
             )
 
-    # Start from the stored file so unrecognized keys survive a save.
-    config = dict(read_inference_credentials(provider) or {})
-    config["api_key"] = api_key
-    write_inference_credentials(provider, config)
+    removed_ids: list[str] = []
+    if body.models is not None:
+        existing = {m["id"]: m for m in instance["models"]}
+        wanted: list[dict] = []
+        seen: set[str] = set()
+        new_wire_ids = [
+            m.id.strip() for m in body.models
+            if m.id.strip() and m.id.strip() not in existing
+        ]
+        snapshots = await _catalog_snapshots(new_wire_ids)
+        for item in body.models:
+            wire_id = item.id.strip()
+            if not wire_id or wire_id in seen:
+                continue
+            seen.add(wire_id)
+            base = existing.get(wire_id) or {"id": wire_id, **(snapshots.get(wire_id) or {})}
+            wanted.append({**base, "enabled": item.enabled})
+        removed_ids = [
+            qualify_model_id(instance_id, wire_id)
+            for wire_id in existing if wire_id not in seen
+        ]
+        instance["models"] = wanted
 
-    # Drop cached SDK clients so the new key is used on the next session
-    # instead of after the next restart.
-    from chat.llm.config import reset_provider_client_caches
-    reset_provider_client_caches()
+    instance = upsert_instance(instance)
 
-    # Recheck this backend's models in the background: a failing verdict
-    # recorded under the old key hides them from the picker
-    # (get_available_models() is health-filtered), and only a fresh check
-    # under the new key can bring them back.
-    from chat.llm.health import schedule_model_rechecks
+    if removed_ids:
+        await get_model_health_store().forget(removed_ids)
+    if key_changed:
+        reset_provider_client_caches()
+    if key_changed or body.models is not None:
+        from chat.llm.config import get_configured_models
 
-    backend = API_KEY_PROVIDERS[provider].get("model_backend")
-    if backend:
-        schedule_model_rechecks([m["id"] for m in _models_for_backend(backend)])
+        prefix = f"{instance_id}:"
+        schedule_model_rechecks([
+            m for m in get_configured_models() if m.startswith(prefix)
+        ])
 
-    logger.info("[admin] %s updated %s inference credentials", user["email"], provider)
-    return _api_key_provider_status(provider)
+    logger.info("[admin] %s updated inference instance %s", user["email"], instance_id)
+    return _instance_status(instance)
+
+
+async def _catalog_snapshots(wire_ids: list[str]) -> dict[str, dict]:
+    """Catalog metadata for ``wire_ids`` (empty dict per unlisted id).
+
+    Uses the cached catalog (no refresh) so a save never blocks on the
+    network beyond the first fetch; an unreachable catalog just means
+    custom-id defaults.
+    """
+    if not wire_ids:
+        return {}
+    import asyncio
+
+    from chat.llm.openrouter_catalog import catalog_snapshot, get_catalog
+
+    catalog = await asyncio.to_thread(get_catalog)
+    return {
+        wire_id: catalog_snapshot(catalog["models"], wire_id) or {}
+        for wire_id in wire_ids
+    }
+
+
+@router.delete("/admin/inference-providers/instances/{instance_id}")
+async def admin_delete_inference_instance(
+    instance_id: str,
+    user: dict = Depends(get_current_user_cookie_or_apikey_checked),
+):
+    """Remove an instance: its config entry, its credential file, its
+    cached provider object and its models' health verdicts.
+
+    Conversations and routines that reference the instance's models keep
+    their ids; a new turn on one fails at send time with a clear
+    "not configured" error, the same as after a revoked key.
+    """
+    _require_admin(user)
+    from chat.llm.config import drop_provider_instance
+    from chat.llm.health import get_model_health_store
+    from config.inference_providers import (
+        INSTANCE_KINDS,
+        delete_instance,
+        qualify_model_id,
+    )
+
+    instance = _instance_or_404(instance_id)
+    delete_instance(instance_id)
+    drop_provider_instance(INSTANCE_KINDS[instance["kind"]]["provider"], instance_id)
+    await get_model_health_store().forget([
+        qualify_model_id(instance_id, m["id"]) for m in instance["models"]
+    ])
+    logger.info("[admin] %s deleted inference instance %s", user["email"], instance_id)
+    return {"success": True}
+
+
+@router.get("/admin/inference-providers/openrouter/catalog")
+async def admin_openrouter_catalog(
+    q: str = "",
+    limit: int = 20,
+    refresh: bool = False,
+    user: dict = Depends(get_current_user_cookie_or_apikey_checked),
+):
+    """Typeahead candidates from the cached OpenRouter model catalog.
+
+    Substring match on wire id and name (id-prefix hits first), at most
+    ``limit`` rows. ``refresh=true`` forces a re-fetch. When the catalog
+    cannot be fetched and nothing is cached, ``models`` is empty and
+    ``error`` explains why -- the UI then offers custom-id entry only.
+    """
+    _require_admin(user)
+    import asyncio
+
+    from chat.llm.openrouter_catalog import get_catalog, search_catalog
+
+    catalog = await asyncio.to_thread(get_catalog, refresh)
+    limit = max(1, min(limit, 100))
+    return {
+        "models": search_catalog(catalog["models"], q, limit),
+        "fetched_at": catalog["fetched_at"],
+        "stale": catalog["stale"],
+        "error": catalog["error"],
+    }
 
 
 class InferenceModelTestRequest(BaseModel):
@@ -1005,13 +1224,15 @@ async def admin_test_inference_model(
     Garden, or exhausted quota. The verdict is recorded in the server-global
     model-health store (the same one the startup sweep fills) and returned as
     ``{model, ok, error, checked_at}``; failures come back as data with the
-    provider's explanation extracted, not as an HTTP error.
+    provider's explanation extracted, not as an HTTP error. Disabled models
+    are never checked (400).
     """
     _require_admin(user)
-    from chat.llm.config import MODEL_REGISTRY
+    from chat.llm.config import resolve_model
     from chat.llm.health import get_model_health_store
 
-    if body.model not in MODEL_REGISTRY:
+    spec = resolve_model(body.model)
+    if spec is None:
         raise HTTPException(
             status_code=404,
             detail={
@@ -1019,10 +1240,18 @@ async def admin_test_inference_model(
                 "message": f"Unknown model: {body.model}",
             }
         )
-    result = await get_model_health_store().run_check(body.model)
+    if not spec.enabled:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "model_disabled",
+                "message": f"Model {body.model} is disabled; enable it to check it.",
+            }
+        )
+    result = await get_model_health_store().run_check(spec.id)
     logger.info(
         "[admin] %s health-checked model %s: %s",
-        user["email"], body.model, "ok" if result["ok"] else result["error"],
+        user["email"], spec.id, "ok" if result["ok"] else result["error"],
     )
     return result
 

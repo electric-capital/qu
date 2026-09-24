@@ -23,3 +23,26 @@ github_plugin = plugin_fixture(PLUGINS_DIR / "github")
 slack_plugin = plugin_fixture(PLUGINS_DIR / "slack")
 twitter_plugin = plugin_fixture(PLUGINS_DIR / "twitter")
 telegram_plugin = plugin_fixture(PLUGINS_DIR / "telegram")
+
+
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _isolated_inference_provider_files(tmp_path, monkeypatch):
+    """Keep every test away from the real data-dir provider files.
+
+    ``chat.llm.config.list_model_specs()`` (reached by anything that
+    resolves a model id or lists available models) reads the provider
+    configuration store, and that store synthesizes -- and persists -- an
+    instance entry for any credential file it finds. Pointing the config
+    file, the credential store and the OpenRouter catalog cache at
+    tmp_path makes model resolution deterministic (Vertex registry only,
+    nothing disabled) and prevents tests from writing into data/.
+    """
+    import config.inference_providers as ip
+    import chat.llm.openrouter_catalog as catalog
+
+    monkeypatch.setattr(ip, "INFERENCE_PROVIDERS_FILE", tmp_path / "inference_providers.json")
+    monkeypatch.setattr(ip, "INFERENCE_CREDENTIALS_DIR", tmp_path / "inference_credentials")
+    monkeypatch.setattr(catalog, "OPENROUTER_CATALOG_FILE", tmp_path / "openrouter_catalog.json")

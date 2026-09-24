@@ -499,7 +499,7 @@ def test_resume_bucket_closes_stopped_card_and_appends_new_message(
         pending=[("t-stopped", "create_action_request", {})],
     )
     orig = conv_mod.get_provider_instance
-    conv_mod.get_provider_instance = lambda _n: provider  # type: ignore[assignment]
+    conv_mod.get_provider_instance = lambda _n, _i=None: provider  # type: ignore[assignment]
     messages_out: list[dict] = []
 
     async def on_event(event: dict) -> None:

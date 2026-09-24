@@ -39,7 +39,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import type { ComposerAttachmentRef } from '../api/types';
 import { uploadComposerAttachments } from '../api/fileApi';
 import { extractFilesFromDataTransfer } from '../utils/directoryTraversal';
-import { AVAILABLE_MODELS, SELECTABLE_MODELS, getProviderForModel, getModelDisplayName } from '../constants/models';
+import { getKnownModels, getSelectableModels, getProviderForModel, getModelDisplayName } from '../constants/models';
 import { getVisibleFlags, getFlagLabel } from '../constants/flags';
 import { getFileIconInfo } from '../utils/fileIcons';
 import { ContextIndicator } from './ContextIndicator';
@@ -292,8 +292,8 @@ export function Composer({
   // conversation already on one keeps it via ModelSelector's
   // current-selection fallback.
   const credentialedModels = availableModelIds === null
-    ? SELECTABLE_MODELS
-    : SELECTABLE_MODELS.filter((m) => availableModelIds.includes(m.id));
+    ? getSelectableModels()
+    : getSelectableModels().filter((m) => availableModelIds.includes(m.id));
   const noModelsAvailable = availableModelIds !== null && availableModelIds.length === 0;
 
   const selectedModel = getModelForConversation(conversationId);
@@ -965,7 +965,7 @@ export function Composer({
     <>
       <ModelSelector
         selectedModel={conversationModel ?? ''}
-        models={AVAILABLE_MODELS}
+        models={getKnownModels()}
         onSelect={() => { /* disabled; no-op */ }}
         disabled
         labelOverride={conversationModel

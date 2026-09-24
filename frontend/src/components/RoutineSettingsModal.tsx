@@ -19,7 +19,7 @@ import {
 } from '../api/client';
 import type { Routine, Guide, RoutineSchedule, Skill } from '../api/types';
 import { useConversationContext } from '../contexts/ConversationContext';
-import { SELECTABLE_MODELS, DEPRECATED_MODEL_MAP, getModelDisplayName } from '../constants/models';
+import { getSelectableModels, DEPRECATED_MODEL_MAP, getModelDisplayName } from '../constants/models';
 import { ModalShell } from './ModalShell';
 import './RoutineSettingsModal.css';
 import './settings/SkillsSection.css';
@@ -692,10 +692,10 @@ export function RoutineSettingsModal({
                   {/* Keep the routine's current model selectable when it is
                       deprecated (no longer offered for new picks) so saving
                       unrelated edits doesn't silently switch the model. */}
-                  {model && !SELECTABLE_MODELS.some((m) => m.id === model) && (
+                  {model && !getSelectableModels().some((m) => m.id === model) && (
                     <option value={model}>{getModelDisplayName(model)} (deprecated)</option>
                   )}
-                  {SELECTABLE_MODELS.map((m) => (
+                  {getSelectableModels().map((m) => (
                     <option key={m.id} value={m.id}>{m.name}</option>
                   ))}
                 </select>
