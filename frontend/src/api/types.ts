@@ -1165,13 +1165,20 @@ export interface InferenceModelStatus {
   checked_at: string;
 }
 
-// One model served by an inference provider (non-deprecated registry entries)
+// One model row on a provider card
 export interface InferenceModelInfo {
+  // Stored (qualified) id: bare for Vertex, "<instance>:<wire_id>" for
+  // instance-served models
   id: string;
+  // The model string sent in API calls -- the primary label in the UI
+  wire_id: string;
   display_name: string;
   // Vertex models are split into independently-configured families;
-  // null for single-family API-key providers
+  // null for instance-served models
   family: 'anthropic' | 'gemini_vertex' | null;
+  // Admin toggle: disabled models are hidden from the picker and never
+  // health-checked
+  enabled: boolean;
   // null when the model has never been health-checked
   status: InferenceModelStatus | null;
 }
@@ -1195,28 +1202,70 @@ export interface VertexProviderStatus {
   models: InferenceModelInfo[];
 }
 
-export interface ApiKeyProviderStatus {
-  provider: string;
+// One admin-configured provider instance (an OpenRouter configuration)
+export interface InferenceInstanceStatus {
+  id: string;
+  kind: string;
+  kind_label: string;
   label: string;
-  kind: 'api_key';
   configured: boolean;
-  // "store" = per-provider file in the data directory, "legacy" = still read
-  // from server_credentials.json, null = unconfigured
-  source: 'store' | 'legacy' | null;
+  // "store" = key file in the data directory, null = no key yet
+  source: 'store' | null;
   credentials: { api_key_set: boolean };
   hint: string;
   models: InferenceModelInfo[];
 }
 
-export type InferenceProviderStatus = VertexProviderStatus | ApiKeyProviderStatus;
-
 export interface InferenceProvidersListResponse {
-  providers: InferenceProviderStatus[];
+  vertex: VertexProviderStatus;
+  instances: InferenceInstanceStatus[];
+  // Instance kinds an admin can add
+  kinds: { kind: string; label: string }[];
 }
 
-export interface InferenceProviderKeyUpdate {
+export interface VertexModelsUpdate {
+  // Full replacement of the disabled set (Vertex model ids)
+  disabled_models: string[];
+}
+
+export interface InferenceInstanceCreate {
+  kind: string;
+  label?: string;
+}
+
+export interface InferenceInstanceUpdate {
+  label?: string;
   // Empty string keeps the currently stored key
-  api_key: string;
+  api_key?: string;
+  // Full replacement of the model list (wire ids), in display order
+  models?: { id: string; enabled: boolean }[];
+}
+
+// One OpenRouter catalog entry (typeahead candidate)
+export interface OpenRouterCatalogModel {
+  id: string;
+  name: string;
+  context_length: number | null;
+  max_completion_tokens: number | null;
+  pricing: { prompt: number; completion: number; cache_read?: number } | null;
+}
+
+export interface OpenRouterCatalogResponse {
+  models: OpenRouterCatalogModel[];
+  fetched_at: number | null;
+  stale: boolean;
+  error: string | null;
+}
+
+// One known model as reported by GET /app/api/config `models` (every model
+// incl. deprecated / admin-disabled ones, for labelling old conversations)
+export interface AppModelInfo {
+  id: string;
+  display_name: string;
+  provider: string;
+  provider_label: string;
+  max_input_tokens: number;
+  deprecated: boolean;
 }
 
 // Schedule types

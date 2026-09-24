@@ -1,14 +1,19 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Check, Loader2, X } from 'lucide-react';
+import { Loader2, Plus, X } from 'lucide-react';
 import {
+  createInferenceInstance,
+  deleteInferenceInstance,
   fetchInferenceProviders,
+  searchOpenRouterCatalog,
   testInferenceModel,
-  updateInferenceProviderKey,
+  updateInferenceInstance,
+  updateVertexModels,
 } from '../../api/client';
 import type {
-  ApiKeyProviderStatus,
+  InferenceInstanceStatus,
   InferenceModelInfo,
-  InferenceProviderStatus,
+  InferenceProvidersListResponse,
+  OpenRouterCatalogModel,
   VertexProviderStatus,
   VertexSectionInfo,
 } from '../../api/types';
@@ -32,6 +37,10 @@ const PROJECT_SOURCE_LABELS: Record<string, string> = {
   server_config: 'server_config.json',
   anthropic_fallback: 'inherited from the Claude on Vertex project',
 };
+
+function errorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
+}
 
 function InfoRow({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
   return (
@@ -118,7 +127,7 @@ function useModelChecks() {
       console.error(`Model health check failed for ${modelId}:`, error);
       next = {
         status: 'error',
-        error: error instanceof Error ? error.message : 'Check failed',
+        error: errorMessage(error, 'Check failed'),
         checkedAt: new Date().toISOString(),
       };
     }
@@ -142,53 +151,98 @@ function useModelChecks() {
   return { stateFor, runCheck, runAll, anyChecking };
 }
 
-/** Checkbox-style status indicator: empty box → spinner → ✓ / ✕. */
-function ModelCheckIndicator({ state }: { state: ModelCheckState }) {
+/** Liveness indicator: grey dot (never checked) / spinner / green / red. */
+function LivenessDot({ state }: { state: ModelCheckState }) {
   if (state.status === 'checking') {
-    return <Loader2 size={14} className="inf-prov-model-spinner" aria-label="Checking" />;
+    return <Loader2 size={12} className="inf-prov-model-spinner" aria-label="Checking" />;
   }
-  const modifier = state.status === 'ok' ? ' ok' : state.status === 'error' ? ' error' : '';
   const title =
     state.status === 'idle'
       ? 'Not checked yet'
-      : `Last checked ${new Date(state.checkedAt).toLocaleString()}`;
+      : `${state.status === 'ok' ? 'Responding' : 'Failing'} — last checked ${new Date(state.checkedAt).toLocaleString()}`;
   return (
-    <span className={`inf-prov-model-box${modifier}`} title={title}>
-      {state.status === 'ok' && <Check size={11} strokeWidth={3} />}
-      {state.status === 'error' && <X size={11} strokeWidth={3} />}
-    </span>
+    <span
+      className={`inf-prov-dot ${state.status}`}
+      title={title}
+      role="img"
+      aria-label={state.status === 'idle' ? 'Not checked' : state.status === 'ok' ? 'Responding' : 'Failing'}
+    />
   );
 }
 
+/**
+ * One model row: enabled checkbox, the wire id (what the API call sends) as
+ * the primary label with the friendly name muted beside it, the liveness
+ * dot + Recheck (only while the model is enabled and its provider is
+ * credentialed -- disabled models are never checked), and an optional
+ * remove button for instance models.
+ */
 function ModelRow({
   model,
   state,
-  onCheck,
   checkable,
+  busy,
+  onCheck,
+  onToggle,
+  onRemove,
 }: {
   model: InferenceModelInfo;
   state: ModelCheckState;
-  onCheck: () => void;
   checkable: boolean;
+  busy: boolean;
+  onCheck: () => void;
+  onToggle: (enabled: boolean) => void;
+  onRemove?: () => void;
 }) {
+  const showLiveness = model.enabled && checkable;
+  const showName = model.display_name && model.display_name !== model.wire_id;
   return (
-    <div className="inf-prov-model-row">
+    <div className={`inf-prov-model-row${model.enabled ? '' : ' disabled'}`}>
       <div className="inf-prov-model-line">
-        <ModelCheckIndicator state={state} />
-        <span className="inf-prov-model-name" title={model.id}>
-          {model.display_name}
+        <input
+          type="checkbox"
+          className="inf-prov-model-checkbox"
+          checked={model.enabled}
+          disabled={busy}
+          onChange={(e) => onToggle(e.target.checked)}
+          aria-label={`Enable ${model.wire_id}`}
+          title={model.enabled ? 'Enabled — offered in the model picker' : 'Disabled — hidden from the model picker, not health-checked'}
+        />
+        <span className="inf-prov-model-wire" title={model.id}>
+          {model.wire_id}
         </span>
-        {checkable && (
+        {showName && <span className="inf-prov-model-display">{model.display_name}</span>}
+        {showLiveness ? (
+          <>
+            <LivenessDot state={state} />
+            <button
+              className="inf-prov-model-check-btn"
+              onClick={onCheck}
+              disabled={state.status === 'checking' || busy}
+            >
+              {state.status === 'idle' || state.status === 'checking' ? 'Check' : 'Recheck'}
+            </button>
+          </>
+        ) : (
+          <span className="inf-prov-model-off-note">
+            {model.enabled ? 'not configured' : 'disabled'}
+          </span>
+        )}
+        {onRemove && (
           <button
-            className="inf-prov-model-check-btn"
-            onClick={onCheck}
-            disabled={state.status === 'checking'}
+            className="inf-prov-model-remove-btn"
+            onClick={onRemove}
+            disabled={busy}
+            title={`Remove ${model.wire_id} from this configuration`}
+            aria-label={`Remove ${model.wire_id}`}
           >
-            {state.status === 'idle' || state.status === 'checking' ? 'Check' : 'Recheck'}
+            <X size={12} />
           </button>
         )}
       </div>
-      {state.status === 'error' && <p className="inf-prov-model-error">{state.error}</p>}
+      {showLiveness && state.status === 'error' && (
+        <p className="inf-prov-model-error">{state.error}</p>
+      )}
     </div>
   );
 }
@@ -201,15 +255,30 @@ interface ModelGroup {
 }
 
 /**
- * Right-hand Models panel: the current server-stored health verdict per
- * model (the server checks every configured model at startup) with Recheck
- * buttons that re-run the live check and update the server-global store.
+ * Right-hand Models panel: checkbox-enabled rows with the server-stored
+ * liveness verdict per model and Recheck buttons that re-run the live check
+ * and update the server-global store.
  */
-function ModelsPanel({ groups }: { groups: ModelGroup[] }) {
+function ModelsPanel({
+  groups,
+  busy,
+  saveError,
+  onToggle,
+  onRemove,
+  children,
+}: {
+  groups: ModelGroup[];
+  busy: boolean;
+  saveError: string;
+  onToggle: (model: InferenceModelInfo, enabled: boolean) => void;
+  onRemove?: (model: InferenceModelInfo) => void;
+  children?: React.ReactNode;
+}) {
   const { stateFor, runCheck, runAll, anyChecking } = useModelChecks();
   const nonEmpty = groups.filter((group) => group.models.length > 0);
-  const checkable = nonEmpty.filter((g) => g.configured).flatMap((g) => g.models);
-  if (nonEmpty.length === 0) return null;
+  const checkable = nonEmpty
+    .filter((g) => g.configured)
+    .flatMap((g) => g.models.filter((m) => m.enabled));
 
   return (
     <div className="inf-prov-models">
@@ -218,16 +287,15 @@ function ModelsPanel({ groups }: { groups: ModelGroup[] }) {
         <button
           className="inf-prov-model-check-btn"
           onClick={() => runAll(checkable)}
-          disabled={anyChecking || checkable.length === 0}
+          disabled={anyChecking || busy || checkable.length === 0}
         >
           Recheck all
         </button>
       </div>
       <p className="inf-prov-models-note">
-        Every configured model is health-checked at server startup with a
-        minimal real inference call — this catches models that are not
-        enabled in Vertex Model Garden as well as quota and permission
-        problems. Recheck re-runs a check and updates the stored result.
+        Unchecked models are hidden from the model picker and never
+        health-checked. Enabled models are checked at server startup with a
+        minimal real inference call; the dot shows the latest result.
       </p>
       {nonEmpty.map((group, index) => (
         <div key={group.title ?? index} className="inf-prov-subsection">
@@ -237,8 +305,11 @@ function ModelsPanel({ groups }: { groups: ModelGroup[] }) {
               key={model.id}
               model={model}
               state={stateFor(model)}
-              onCheck={() => runCheck(model.id)}
               checkable={group.configured}
+              busy={busy}
+              onCheck={() => runCheck(model.id)}
+              onToggle={(enabled) => onToggle(model, enabled)}
+              onRemove={onRemove ? () => onRemove(model) : undefined}
             />
           ))}
           {!group.configured && (
@@ -248,13 +319,42 @@ function ModelsPanel({ groups }: { groups: ModelGroup[] }) {
           )}
         </div>
       ))}
+      {children}
+      {saveError && <p className="inf-prov-model-error">{saveError}</p>}
     </div>
   );
 }
 
-/** Read-only card showing the Vertex AI setup detected from the environment. */
-function VertexProviderCard({ status }: { status: VertexProviderStatus }) {
+// ---------------------------------------------------------------------------
+// Vertex card
+// ---------------------------------------------------------------------------
+
+/**
+ * Read-only environment info for Vertex AI plus the fixed model catalog with
+ * per-model enable checkboxes (saved immediately as the disabled set).
+ */
+function VertexProviderCard({ status: initial }: { status: VertexProviderStatus }) {
+  const [status, setStatus] = useState(initial);
+  const [busy, setBusy] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const creds = status.detail.credentials;
+
+  const handleToggle = useCallback(async (model: InferenceModelInfo, enabled: boolean) => {
+    const disabled = status.models
+      .filter((m) => (m.id === model.id ? !enabled : !m.enabled))
+      .map((m) => m.id);
+    setBusy(true);
+    setSaveError('');
+    try {
+      setStatus(await updateVertexModels({ disabled_models: disabled }));
+    } catch (error) {
+      console.error('Failed to update Vertex models:', error);
+      setSaveError(errorMessage(error, 'Failed to save'));
+    } finally {
+      setBusy(false);
+    }
+  }, [status.models]);
+
   return (
     <CredentialCard
       fallbackLabel={status.label}
@@ -303,19 +403,205 @@ function VertexProviderCard({ status }: { status: VertexProviderStatus }) {
               models: status.models.filter((m) => m.family === 'gemini_vertex'),
             },
           ]}
+          busy={busy}
+          saveError={saveError}
+          onToggle={handleToggle}
         />
       </div>
     </CredentialCard>
   );
 }
 
-/** Editable card for an API-key provider (none registered today; kept for
- * future direct-API providers -- the backend registry drives the list). */
-function ApiKeyProviderCard({ status: initial }: { status: ApiKeyProviderStatus }) {
+// ---------------------------------------------------------------------------
+// OpenRouter model typeahead
+// ---------------------------------------------------------------------------
+
+function formatContext(tokens: number | null): string {
+  if (!tokens) return '';
+  return tokens >= 1_000_000
+    ? `${(tokens / 1_000_000).toFixed(tokens % 1_000_000 ? 1 : 0)}M ctx`
+    : `${Math.round(tokens / 1000)}K ctx`;
+}
+
+/**
+ * "Add model" combobox over the cached OpenRouter catalog: debounced
+ * substring search on id/name, plus a "use as custom id" row so a model the
+ * catalog does not list yet (or an unreachable catalog) never blocks the
+ * admin. Enter picks the highlighted row; Escape closes.
+ */
+function AddModelCombobox({
+  existing,
+  disabled,
+  onAdd,
+}: {
+  existing: Set<string>;
+  disabled: boolean;
+  onAdd: (wireId: string) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
+  const [results, setResults] = useState<OpenRouterCatalogModel[]>([]);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [highlight, setHighlight] = useState(0);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const requestSeq = useRef(0);
+
+  useEffect(() => {
+    if (!open) return;
+    const seq = ++requestSeq.current;
+    setSearching(true);
+    const timer = window.setTimeout(async () => {
+      try {
+        const response = await searchOpenRouterCatalog(query.trim(), { limit: 12 });
+        if (seq !== requestSeq.current) return;
+        setResults(response.models.filter((m) => !existing.has(m.id)));
+        setCatalogError(response.error);
+      } catch (error) {
+        if (seq !== requestSeq.current) return;
+        setResults([]);
+        setCatalogError(errorMessage(error, 'Catalog unavailable'));
+      } finally {
+        if (seq === requestSeq.current) setSearching(false);
+      }
+    }, 200);
+    return () => window.clearTimeout(timer);
+  }, [query, open, existing]);
+
+  useEffect(() => {
+    if (!open) return;
+    const handleClickOutside = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [open]);
+
+  const trimmed = query.trim();
+  const customCandidate =
+    trimmed && !existing.has(trimmed) && !results.some((m) => m.id === trimmed) ? trimmed : null;
+  const optionCount = results.length + (customCandidate ? 1 : 0);
+
+  const pick = useCallback((wireId: string) => {
+    onAdd(wireId);
+    setQuery('');
+    setOpen(false);
+    setHighlight(0);
+  }, [onAdd]);
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Escape') {
+      setOpen(false);
+      return;
+    }
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      setOpen(true);
+      setHighlight((h) => Math.min(h + 1, Math.max(optionCount - 1, 0)));
+      return;
+    }
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setHighlight((h) => Math.max(h - 1, 0));
+      return;
+    }
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      if (optionCount === 0) return;
+      const index = Math.min(highlight, optionCount - 1);
+      if (index < results.length) pick(results[index].id);
+      else if (customCandidate) pick(customCandidate);
+    }
+  };
+
+  return (
+    <div className="inf-prov-add-model" ref={containerRef}>
+      <input
+        type="text"
+        className="inf-prov-add-model-input"
+        placeholder="Add a model — search the OpenRouter catalog or type an id"
+        value={query}
+        disabled={disabled}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          setHighlight(0);
+          setOpen(true);
+        }}
+        onFocus={() => setOpen(true)}
+        onKeyDown={handleKeyDown}
+        role="combobox"
+        aria-expanded={open}
+        aria-autocomplete="list"
+        aria-controls="inf-prov-add-model-listbox"
+      />
+      {open && (
+        <div className="inf-prov-typeahead-dropdown" role="listbox" id="inf-prov-add-model-listbox">
+          {results.map((m, index) => (
+            <div
+              key={m.id}
+              role="option"
+              aria-selected={index === highlight}
+              className={`inf-prov-typeahead-option${index === highlight ? ' active' : ''}`}
+              onMouseEnter={() => setHighlight(index)}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => pick(m.id)}
+            >
+              <span className="inf-prov-typeahead-id">{m.id}</span>
+              <span className="inf-prov-typeahead-meta">
+                {m.name}{m.context_length ? ` · ${formatContext(m.context_length)}` : ''}
+              </span>
+            </div>
+          ))}
+          {customCandidate && (
+            <div
+              role="option"
+              aria-selected={highlight === results.length}
+              className={`inf-prov-typeahead-option${highlight === results.length ? ' active' : ''}`}
+              onMouseEnter={() => setHighlight(results.length)}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => pick(customCandidate)}
+            >
+              <span className="inf-prov-typeahead-id">{customCandidate}</span>
+              <span className="inf-prov-typeahead-meta">Use as a custom model id</span>
+            </div>
+          )}
+          {optionCount === 0 && (
+            <div className="inf-prov-typeahead-empty">
+              {searching ? 'Searching…' : trimmed ? 'Already added' : 'Type to search the catalog'}
+            </div>
+          )}
+          {catalogError && (
+            <div className="inf-prov-typeahead-empty inf-prov-typeahead-warning">
+              Catalog unavailable ({catalogError}) — custom ids still work.
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Provider-instance card (one OpenRouter configuration)
+// ---------------------------------------------------------------------------
+
+function InstanceCard({
+  status: initial,
+  onDeleted,
+}: {
+  status: InferenceInstanceStatus;
+  onDeleted: (instanceId: string) => void;
+}) {
   const [status, setStatus] = useState(initial);
+  const [label, setLabel] = useState(initial.label);
   const [apiKey, setApiKey] = useState('');
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [saveError, setSaveError] = useState('');
+  const [modelsBusy, setModelsBusy] = useState(false);
+  const [modelsError, setModelsError] = useState('');
+  const [deleting, setDeleting] = useState(false);
   const statusTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -324,36 +610,97 @@ function ApiKeyProviderCard({ status: initial }: { status: ApiKeyProviderStatus 
     };
   }, []);
 
+  const labelDirty = label.trim() !== status.label;
+
   const handleSave = useCallback(async () => {
     setSaveStatus('saving');
     setSaveError('');
     try {
-      const updated = await updateInferenceProviderKey(status.provider, { api_key: apiKey });
+      const updated = await updateInferenceInstance(status.id, {
+        label: labelDirty ? label.trim() : undefined,
+        api_key: apiKey,
+      });
       setStatus(updated);
+      setLabel(updated.label);
       setApiKey('');
       setSaveStatus('saved');
       if (statusTimeoutRef.current) clearTimeout(statusTimeoutRef.current);
       statusTimeoutRef.current = window.setTimeout(() => setSaveStatus('idle'), 2000);
     } catch (error) {
-      console.error(`Failed to save ${status.provider} API key:`, error);
+      console.error(`Failed to save instance ${status.id}:`, error);
       setSaveStatus('error');
-      setSaveError(error instanceof Error ? error.message : 'Failed to save');
+      setSaveError(errorMessage(error, 'Failed to save'));
       if (statusTimeoutRef.current) clearTimeout(statusTimeoutRef.current);
       statusTimeoutRef.current = window.setTimeout(() => setSaveStatus('idle'), 4000);
     }
-  }, [status.provider, apiKey]);
+  }, [status.id, label, labelDirty, apiKey]);
+
+  const saveModels = useCallback(async (models: { id: string; enabled: boolean }[]) => {
+    setModelsBusy(true);
+    setModelsError('');
+    try {
+      setStatus(await updateInferenceInstance(status.id, { models }));
+    } catch (error) {
+      console.error(`Failed to update models for ${status.id}:`, error);
+      setModelsError(errorMessage(error, 'Failed to save'));
+    } finally {
+      setModelsBusy(false);
+    }
+  }, [status.id]);
+
+  const currentModels = useCallback(
+    () => status.models.map((m) => ({ id: m.wire_id, enabled: m.enabled })),
+    [status.models],
+  );
+
+  const handleToggle = (model: InferenceModelInfo, enabled: boolean) =>
+    saveModels(currentModels().map((m) => (m.id === model.wire_id ? { ...m, enabled } : m)));
+  const handleRemove = (model: InferenceModelInfo) =>
+    saveModels(currentModels().filter((m) => m.id !== model.wire_id));
+  const handleAdd = (wireId: string) =>
+    saveModels([...currentModels(), { id: wireId, enabled: true }]);
+
+  const handleDelete = useCallback(async () => {
+    const confirmed = window.confirm(
+      `Remove the "${status.label}" configuration? Its API key and model list are deleted; ` +
+      'conversations already using its models will fail on their next message.',
+    );
+    if (!confirmed) return;
+    setDeleting(true);
+    try {
+      await deleteInferenceInstance(status.id);
+      onDeleted(status.id);
+    } catch (error) {
+      console.error(`Failed to delete instance ${status.id}:`, error);
+      setModelsError(errorMessage(error, 'Failed to remove'));
+      setDeleting(false);
+    }
+  }, [status.id, status.label, onDeleted]);
+
+  const existing = new Set(status.models.map((m) => m.wire_id));
 
   return (
     <CredentialCard
       fallbackLabel={status.label}
       loading={false}
       loadError=""
-      detail={status}
+      detail={{ label: `${status.label} · ${status.kind_label}`, configured: status.configured, source: status.source }}
     >
       <div className="inf-prov-columns">
         <div className="inf-prov-main">
+          <p className="inf-prov-detected-note">
+            Instance id <code>{status.id}</code> — its models are stored as{' '}
+            <code>{status.id}:&lt;model id&gt;</code>.
+          </p>
           <CredentialField
-            id={`inf-prov-${status.provider}-api-key`}
+            id={`inf-prov-${status.id}-label`}
+            label="Label"
+            value={label}
+            onChange={setLabel}
+            placeholder={status.kind_label}
+          />
+          <CredentialField
+            id={`inf-prov-${status.id}-api-key`}
             label="API key"
             value={apiKey}
             onChange={setApiKey}
@@ -363,43 +710,82 @@ function ApiKeyProviderCard({ status: initial }: { status: ApiKeyProviderStatus 
           <SaveActions
             saveStatus={saveStatus}
             saveError={saveError}
-            disabled={!apiKey.trim() && !status.configured}
+            disabled={!apiKey.trim() && !labelDirty}
             onSave={handleSave}
           />
+          <button
+            className="inf-prov-danger-btn"
+            onClick={handleDelete}
+            disabled={deleting}
+          >
+            {deleting ? 'Removing…' : 'Remove configuration'}
+          </button>
         </div>
         <ModelsPanel
           groups={[{ title: null, configured: status.configured, models: status.models }]}
-        />
+          busy={modelsBusy || deleting}
+          saveError={modelsError}
+          onToggle={handleToggle}
+          onRemove={handleRemove}
+        >
+          <AddModelCombobox existing={existing} disabled={modelsBusy || deleting} onAdd={handleAdd} />
+        </ModelsPanel>
       </div>
     </CredentialCard>
   );
 }
 
+// ---------------------------------------------------------------------------
+// Section
+// ---------------------------------------------------------------------------
+
 /**
  * Admin-only panel for LLM inference provider configuration. Vertex AI is
  * shown read-only (its credentials and project config are detected from the
- * server environment); API-key providers, when registered, are editable
- * here. Each card's Models panel shows the server-stored health verdict per
- * model — populated by the startup check sweep — with Recheck buttons that
- * re-run the live check and update the global store. The card list is driven
- * by the backend registry, so newly registered providers (e.g. a direct
- * Anthropic or OpenAI API) appear without frontend changes.
+ * server environment) with per-model enable checkboxes; every OpenRouter
+ * configuration (provider instance) gets its own editable card with a
+ * label, a write-only API key, and an admin-picked model list fed by the
+ * OpenRouter catalog typeahead. Each card's Models panel shows the real
+ * model id string used in API calls, the server-stored liveness verdict per
+ * model (startup sweep + rechecks), and Recheck buttons. Instances are
+ * added from the buttons at the bottom.
  */
 export function InferenceProvidersSection() {
-  const [providers, setProviders] = useState<InferenceProviderStatus[] | null>(null);
+  const [data, setData] = useState<InferenceProvidersListResponse | null>(null);
   const [loadError, setLoadError] = useState('');
+  const [adding, setAdding] = useState<string | null>(null);
+  const [addError, setAddError] = useState('');
 
   useEffect(() => {
     const load = async () => {
       try {
-        const response = await fetchInferenceProviders();
-        setProviders(response.providers);
+        setData(await fetchInferenceProviders());
       } catch (error) {
         console.error('Failed to load inference providers:', error);
-        setLoadError(error instanceof Error ? error.message : 'Failed to load');
+        setLoadError(errorMessage(error, 'Failed to load'));
       }
     };
     load();
+  }, []);
+
+  const handleAdd = useCallback(async (kind: string) => {
+    setAdding(kind);
+    setAddError('');
+    try {
+      const created = await createInferenceInstance({ kind });
+      setData((prev) => (prev ? { ...prev, instances: [...prev.instances, created] } : prev));
+    } catch (error) {
+      console.error(`Failed to add ${kind} instance:`, error);
+      setAddError(errorMessage(error, 'Failed to add configuration'));
+    } finally {
+      setAdding(null);
+    }
+  }, []);
+
+  const handleDeleted = useCallback((instanceId: string) => {
+    setData((prev) =>
+      prev ? { ...prev, instances: prev.instances.filter((i) => i.id !== instanceId) } : prev,
+    );
   }, []);
 
   return (
@@ -407,23 +793,36 @@ export function InferenceProvidersSection() {
       <h3>Inference Providers</h3>
       <p className="settings-description">
         LLM backends used to run conversations. These apply to all users;
-        models without configured credentials are hidden from the model
+        only enabled models with configured credentials appear in the model
         picker. Admin only.
       </p>
       {loadError ? (
         <div className="svc-cred-load-error">{loadError}</div>
-      ) : providers === null ? (
+      ) : data === null ? (
         <div className="settings-loading">Loading...</div>
       ) : (
-        <div className="inf-prov-cards">
-          {providers.map((provider) =>
-            provider.kind === 'detected' ? (
-              <VertexProviderCard key={provider.provider} status={provider} />
-            ) : (
-              <ApiKeyProviderCard key={provider.provider} status={provider} />
-            ),
-          )}
-        </div>
+        <>
+          <div className="inf-prov-cards">
+            <VertexProviderCard status={data.vertex} />
+            {data.instances.map((instance) => (
+              <InstanceCard key={instance.id} status={instance} onDeleted={handleDeleted} />
+            ))}
+          </div>
+          <div className="inf-prov-footer">
+            {data.kinds.map((kind) => (
+              <button
+                key={kind.kind}
+                className="inf-prov-add-btn"
+                onClick={() => handleAdd(kind.kind)}
+                disabled={adding !== null}
+              >
+                <Plus size={14} />
+                {adding === kind.kind ? 'Adding…' : `Add ${kind.label} configuration`}
+              </button>
+            ))}
+            {addError && <span className="inf-prov-model-error">{addError}</span>}
+          </div>
+        </>
       )}
     </div>
   );

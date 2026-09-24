@@ -8,7 +8,7 @@ import { checkSession } from '../utils/auth';
 import { applyTheme, cacheTheme, normalizeTheme, readCachedTheme, type ThemePreference } from '../utils/theme';
 import { applyColorTheme, cacheColorTheme, normalizeColorTheme, readCachedColorTheme, type ColorThemeId } from '../utils/colorTheme';
 import { fetchGuides, fetchProjects, fetchVersion } from '../api/client';
-import { DEPRECATED_MODEL_MAP, DEFAULT_MODEL_ID, AVAILABLE_MODELS, resolveFallbackModel } from '../constants/models';
+import { DEPRECATED_MODEL_MAP, DEFAULT_MODEL_ID, getModelInfo, resolveFallbackModel, setModelCatalog } from '../constants/models';
 import { HOME_DRAFT_KEY } from '../constants/drafts';
 import { persistentWebSocket } from '../services/PersistentWebSocket';
 import type { ComposerAttachmentRef, Guide, Project } from '../api/types';
@@ -18,12 +18,12 @@ const VERSION_POLL_INTERVAL_MS = 60_000;
 
 /**
  * Resolve a (possibly null / stale / unknown) server-stored default model id
- * to a usable model id: remap deprecated ids, validate against AVAILABLE_MODELS
+ * to a usable model id: remap deprecated ids, validate against the model catalog
  * and against the server's credentialed-model list (available_models from
  * GET /app/api/config; null while unknown), and fall back to the best
  * credentialed model when unset/unknown/uncredentialed -- Opus 4.8 when its
  * credentials exist (or the list is unknown), otherwise the first credentialed
- * model in SELECTABLE_MODELS order (see resolveFallbackModel). A stored
+ * model in catalog order (see resolveFallbackModel). A stored
  * default that is deprecated (still runnable, but hidden from the picker) also
  * falls back, so new conversations never start on a deprecated model. Single
  * place the FE applies the fallback (the backend /me returns the raw stored
@@ -35,7 +35,7 @@ function resolveDefaultModel(
 ): string {
   if (!raw) return resolveFallbackModel(availableIds);
   const remapped = DEPRECATED_MODEL_MAP[raw] || raw;
-  const entry = AVAILABLE_MODELS.find((m) => m.id === remapped);
+  const entry = getModelInfo(remapped);
   const usable = entry !== undefined && !entry.deprecated;
   const credentialed = availableIds === null || availableIds.includes(remapped);
   return usable && credentialed ? remapped : resolveFallbackModel(availableIds);
@@ -334,6 +334,10 @@ export function ConversationProvider({ children }: ConversationProviderProps) {
             setAppName('DevQuest');
             setIsDevMode(true);
           }
+          // The model catalog must land before available_models: consumers
+          // re-render on the availableModelIds state change and read the
+          // catalog (module state) during that render.
+          setModelCatalog(data.models);
           if (Array.isArray(data.available_models)) {
             availableModelIdsRef.current = data.available_models;
             setAvailableModelIds(data.available_models);

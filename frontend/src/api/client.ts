@@ -49,9 +49,13 @@ import type {
   ServiceCredentialDetail,
   ServiceCredentialUpdate,
   InferenceProvidersListResponse,
-  InferenceProviderKeyUpdate,
+  InferenceInstanceCreate,
+  InferenceInstanceStatus,
+  InferenceInstanceUpdate,
+  OpenRouterCatalogResponse,
+  VertexModelsUpdate,
+  VertexProviderStatus,
   InferenceModelTestResult,
-  ApiKeyProviderStatus,
   InferenceApiKeysListResponse,
   CreatedInferenceApiKey,
 } from './types';
@@ -699,11 +703,34 @@ export function testInferenceModel(model: string): Promise<InferenceModelTestRes
   return apiPost(endpoints.adminInferenceModelTest(), { body: { model } });
 }
 
-export function updateInferenceProviderKey(
-  provider: string,
-  update: InferenceProviderKeyUpdate,
-): Promise<ApiKeyProviderStatus> {
-  return apiPut(endpoints.adminInferenceProvider(provider), { body: update });
+export function updateVertexModels(update: VertexModelsUpdate): Promise<VertexProviderStatus> {
+  return apiPut(endpoints.adminInferenceVertex(), { body: update });
+}
+
+export function createInferenceInstance(
+  body: InferenceInstanceCreate,
+): Promise<InferenceInstanceStatus> {
+  return apiPost(endpoints.adminInferenceInstances(), { body });
+}
+
+export function updateInferenceInstance(
+  instanceId: string,
+  update: InferenceInstanceUpdate,
+): Promise<InferenceInstanceStatus> {
+  return apiPut(endpoints.adminInferenceInstance(instanceId), { body: update });
+}
+
+export function deleteInferenceInstance(instanceId: string): Promise<{ success: boolean }> {
+  return apiDelete(endpoints.adminInferenceInstance(instanceId));
+}
+
+export function searchOpenRouterCatalog(
+  q: string,
+  options: { limit?: number; refresh?: boolean } = {},
+): Promise<OpenRouterCatalogResponse> {
+  return apiGet(endpoints.adminOpenRouterCatalog(), {
+    query: { q, limit: options.limit, refresh: options.refresh || undefined },
+  });
 }
 
 // Search API function

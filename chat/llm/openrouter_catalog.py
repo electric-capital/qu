@@ -88,6 +88,29 @@ def _normalize_entry(raw) -> dict | None:
     }
 
 
+def _cached_entry(raw) -> dict | None:
+    """Validate one ALREADY-normalized cache entry (the cache stores the
+    output of :func:`_normalize_entry`, so it must not be normalized again:
+    its prices are per-1M and its output cap is top-level)."""
+    if not isinstance(raw, dict) or not isinstance(raw.get("id"), str) or not raw["id"]:
+        return None
+    pricing = raw.get("pricing")
+    if not (isinstance(pricing, dict) and "prompt" in pricing and "completion" in pricing):
+        pricing = None
+    name = raw.get("name")
+    context_length = raw.get("context_length")
+    max_completion = raw.get("max_completion_tokens")
+    return {
+        "id": raw["id"],
+        "name": name if isinstance(name, str) and name else raw["id"],
+        "context_length": int(context_length) if isinstance(context_length, (int, float)) else None,
+        "max_completion_tokens": (
+            int(max_completion) if isinstance(max_completion, (int, float)) else None
+        ),
+        "pricing": pricing,
+    }
+
+
 def _read_cache() -> dict | None:
     try:
         with open(OPENROUTER_CATALOG_FILE, "r") as f:
@@ -102,7 +125,7 @@ def _read_cache() -> dict | None:
     fetched_at = data.get("fetched_at")
     if not isinstance(fetched_at, (int, float)):
         return None
-    models = [m for m in (_normalize_entry(x) for x in data["models"]) if m]
+    models = [m for m in (_cached_entry(x) for x in data["models"]) if m]
     return {"fetched_at": float(fetched_at), "models": models}
 
 

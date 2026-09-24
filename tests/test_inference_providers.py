@@ -927,10 +927,13 @@ def test_catalog_normalizes_entries_and_caches(monkeypatch):
     free = first["models"][1]
     assert free["name"] == "free/model" and free["context_length"] is None
     assert free["pricing"] == {"prompt": 0.0, "completion": 0.0}
-    # Second call within the TTL is served from the cache file
+    # Second call within the TTL is served from the cache file -- and the
+    # cached (already per-1M) entries must NOT be normalized a second time
     second = catalog.get_catalog()
     assert fetches == [1]
     assert [m["id"] for m in second["models"]] == [DEEPSEEK, "free/model"]
+    assert second["models"][0] == ds
+    assert second["models"][1] == free
     assert catalog.get_catalog(refresh=True) and fetches == [1, 1]
     assert catalog.catalog_snapshot(first["models"], "free/model") == {
         "name": "free/model", "context_length": None, "max_completion_tokens": None,

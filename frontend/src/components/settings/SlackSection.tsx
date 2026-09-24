@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { fetchSettings, updateSettings } from '../../api/client';
-import { SELECTABLE_MODELS, getModelDisplayName } from '../../constants/models';
+import { getSelectableModels, getModelDisplayName } from '../../constants/models';
 import './SlackSection.css';
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
@@ -108,10 +108,10 @@ export function SlackSection() {
               <option value="">Server default</option>
               {/* Keep a stored deprecated model visible so saving other
                   settings doesn't silently switch it. */}
-              {model && !SELECTABLE_MODELS.some((m) => m.id === model) && (
+              {model && !getSelectableModels().some((m) => m.id === model) && (
                 <option value={model}>{getModelDisplayName(model)} (deprecated)</option>
               )}
-              {SELECTABLE_MODELS.map((m) => (
+              {getSelectableModels().map((m) => (
                 <option key={m.id} value={m.id}>{m.name}</option>
               ))}
             </select>

@@ -173,7 +173,14 @@ export const endpoints = {
 
   adminInferenceProviders: () => `${API_BASE_URL}/admin/inference-providers`,
 
-  adminInferenceProvider: (provider: string) => `${API_BASE_URL}/admin/inference-providers/${provider}`,
+  adminInferenceVertex: () => `${API_BASE_URL}/admin/inference-providers/vertex`,
+
+  adminInferenceInstances: () => `${API_BASE_URL}/admin/inference-providers/instances`,
+
+  adminInferenceInstance: (instanceId: string) =>
+    `${API_BASE_URL}/admin/inference-providers/instances/${encodeURIComponent(instanceId)}`,
+
+  adminOpenRouterCatalog: () => `${API_BASE_URL}/admin/inference-providers/openrouter/catalog`,
 
   adminInferenceModelTest: () => `${API_BASE_URL}/admin/inference-providers/test-model`,
 
