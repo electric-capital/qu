@@ -649,6 +649,9 @@ export interface UserSettings {
   custom_system_prompt?: string;
   slack_default_model?: string | null;
   default_model?: string | null;
+  // Last-used composer model inside public projects (public visibility has
+  // its own admin allow-list, so it is tracked apart from default_model).
+  public_default_model?: string | null;
   // Quest-manageable Gmail label names; each maps to a "[Quest]/<name>"
   // label in Gmail (see Settings > Gmail).
   gmail_labels?: string[] | null;

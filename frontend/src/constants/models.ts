@@ -172,20 +172,43 @@ export function getModelInfo(modelId: string): ModelInfo | undefined {
 export const DEFAULT_MODEL_ID = 'claude-opus-4-8';
 
 /**
- * Pick the fallback default model given the server's credentialed-model list
- * (available_models from GET /app/api/config; null while unknown). Prefers
- * DEFAULT_MODEL_ID, but when its backend credentials are missing falls back to
- * the first credentialed model in catalog order (e.g. Gemini 3.5 Flash-Lite on
- * a Gemini-only local instance; never a deprecated model). With no list yet --
- * or nothing credentialed at all (sending is disabled anyway) -- returns
- * DEFAULT_MODEL_ID.
+ * Whether a model id can be offered for NEW selection in a conversation of
+ * the given visibility: known, not deprecated, allowed by the admin for that
+ * visibility, and credentialed (available_models from GET /app/api/config;
+ * a null list -- config not loaded yet -- skips the credential check).
  */
-export function resolveFallbackModel(availableIds: string[] | null): string {
-  if (availableIds === null || availableIds.includes(DEFAULT_MODEL_ID)) {
+export function isModelSelectableFor(
+  modelId: string,
+  visibility: ModelVisibility,
+  availableIds: string[] | null,
+): boolean {
+  const entry = getModelInfo(modelId);
+  if (entry === undefined || entry.deprecated) return false;
+  if (!isModelAllowedFor(entry, visibility)) return false;
+  return availableIds === null || availableIds.includes(modelId);
+}
+
+/**
+ * Pick the fallback default model for a conversation visibility given the
+ * server's credentialed-model list (available_models from GET
+ * /app/api/config; null while unknown). Prefers DEFAULT_MODEL_ID, but when
+ * its backend credentials are missing -- or the admin disallowed it for this
+ * visibility (Settings > Model Selection) -- falls back to the admin's first
+ * top-level menu pick for the visibility, then to the first offerable model
+ * in catalog order (e.g. Gemini 3.5 Flash-Lite on a Gemini-only local
+ * instance; never a deprecated model). With nothing offerable at all
+ * (sending is disabled anyway) returns DEFAULT_MODEL_ID.
+ */
+export function resolveFallbackModel(
+  availableIds: string[] | null,
+  visibility: ModelVisibility = 'private',
+): string {
+  if (isModelSelectableFor(DEFAULT_MODEL_ID, visibility, availableIds)) {
     return DEFAULT_MODEL_ID;
   }
-  const firstAvailable = getSelectableModels().find((m) => availableIds.includes(m.id));
-  return firstAvailable ? firstAvailable.id : DEFAULT_MODEL_ID;
+  const candidates = [...getTopLevelModels(visibility), ...getSelectableModels(visibility)];
+  const first = candidates.find((m) => isModelSelectableFor(m.id, visibility, availableIds));
+  return first ? first.id : DEFAULT_MODEL_ID;
 }
 
 /** Look up the provider for a model ID. */

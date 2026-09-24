@@ -20,6 +20,7 @@ import { MessageContentRenderer, markdownComponents, MarkdownWorkspaceContext } 
 import { ToolCallGroup } from './ToolCallGroup';
 import type { ToolCallGroupItem } from './ToolCallGroup';
 import { getProviderForModel } from '../constants/models';
+import type { ModelVisibility } from '../constants/models';
 import { Composer } from './Composer';
 import { ConvertToProjectModal } from './ConvertToProjectModal';
 import { ExpensiveResumeWarning } from './ExpensiveResumeWarning';
@@ -396,7 +397,7 @@ export const ChatPanel = React.memo(function ChatPanel({ conversationId, onProje
       !isStreaming &&
       messages.length === 0
     ) {
-      const { prompt, model, skillIds, flags, attachedFilenames, attachments } = pendingFirstMessage;
+      const { prompt, model, skillIds, flags, isPublicProject: startedPublic, attachedFilenames, attachments } = pendingFirstMessage;
       setPendingFirstMessage(null);  // Clear immediately to prevent re-send
 
       const effectiveModel = model || getModelForConversation(conversationId);
@@ -409,10 +410,13 @@ export const ChatPanel = React.memo(function ChatPanel({ conversationId, onProje
         setQueuedSkillsForConversation(conversationId, skillIdsToSend);
       }
 
-      // Persist the per-user default model on the first send of this new chat
-      // (home-originated flow). This is one of the two first-send choke points;
-      // selecting a model without sending never persists.
-      persistDefaultModel(effectiveModel);
+      // Persist the per-user last-used model for the chat's context (public
+      // project vs private, as known by the home composer at send time --
+      // this panel's own project fetch may not have resolved yet) on the
+      // first send of this new chat (home-originated flow). This is one of
+      // the two first-send choke points; selecting a model without sending
+      // never persists.
+      persistDefaultModel(effectiveModel, startedPublic ? 'public' : 'private');
 
       // Files and pasted images were already uploaded into the workspace by
       // HomeComposer before navigation; here we only forward the file names
@@ -437,25 +441,35 @@ export const ChatPanel = React.memo(function ChatPanel({ conversationId, onProje
   // When a conversation loads with no messages, no per-conversation model
   // override (server-sourced ``conversationModel``), and no pending home-flow
   // first message, this composer is a fresh new-chat surface. Re-read the
-  // per-user default from the server so it reflects the latest value across
-  // tabs (mirrors HomeComposer). Guarded so it does not re-fetch once a message
-  // exists, an override is present, or the home auto-send is queued.
-  const didRefreshDefaultRef = useRef(false);
-  useEffect(() => {
-    didRefreshDefaultRef.current = false;
-  }, [conversationId]);
+  // per-user last-used model for the conversation's context -- public
+  // project or private -- from the server so it reflects the latest value
+  // across tabs (mirrors HomeComposer), and seed it as this conversation's
+  // in-memory selection so the composer shows it. The public flag arrives
+  // asynchronously (project fetch), so the refresh re-runs when it flips and
+  // a resolution for the previous context is discarded. Guarded so it does
+  // not re-fetch once a message exists, an override is present, or the home
+  // auto-send is queued.
+  const modelVisibility: ModelVisibility = isPublicProject ? 'public' : 'private';
   useEffect(() => {
     if (
-      isLoaded &&
-      messages.length === 0 &&
-      !conversationModel &&
-      !(pendingFirstMessage && pendingFirstMessage.conversationId === conversationId) &&
-      !didRefreshDefaultRef.current
+      !isLoaded ||
+      messages.length > 0 ||
+      conversationModel ||
+      (pendingFirstMessage && pendingFirstMessage.conversationId === conversationId)
     ) {
-      didRefreshDefaultRef.current = true;
-      refreshDefaultModel();
+      return;
     }
-  }, [isLoaded, messages.length, conversationModel, pendingFirstMessage, conversationId, refreshDefaultModel]);
+    let cancelled = false;
+    refreshDefaultModel(modelVisibility).then((resolved) => {
+      if (!cancelled) hydrateModelForConversation(conversationId, resolved);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // Only the load state, the context and the conversation identity should
+    // trigger a re-fetch, not every message/pending-first-message change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoaded, conversationModel, conversationId, modelVisibility, refreshDefaultModel, hydrateModelForConversation]);
 
   // Wrap the live send path to persist the per-user default on the FIRST send
   // of a chat started directly from this composer (Sidebar "New Chat" then
@@ -472,7 +486,7 @@ export const ChatPanel = React.memo(function ChatPanel({ conversationId, onProje
       files?: File[],
     ) => {
       if (messages.length === 0) {
-        persistDefaultModel(model);
+        persistDefaultModel(model, modelVisibility);
       }
       // Generic file attachments: the conversation already exists in the live
       // chat, so upload them to the workspace root first, then send carrying
@@ -493,7 +507,7 @@ export const ChatPanel = React.memo(function ChatPanel({ conversationId, onProje
       }
       sendMessage(text, model, undefined, skillIds, attachments, flags);
     },
-    [conversationId, messages.length, persistDefaultModel, sendMessage],
+    [conversationId, messages.length, modelVisibility, persistDefaultModel, sendMessage],
   );
 
   // Handle stop/interrupt streaming

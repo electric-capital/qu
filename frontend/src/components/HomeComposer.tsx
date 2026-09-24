@@ -19,6 +19,15 @@
  * typing here matches what the left nav shows. The greeting names the project
  * as the visible cue.
  *
+ * Private / public model contexts: the per-user "last-used" model is tracked
+ * separately for private conversations and for public-project conversations
+ * (the admin's allow-lists differ per visibility -- see model-selection.md).
+ * The composer stays mounted while the user drills into or out of a public
+ * project, so whenever the drilled project's ``public`` flag changes we
+ * re-resolve the last-used model for the new context and re-seed the draft
+ * selection with it, instead of holding on to a pick that may not be allowed
+ * in the new context.
+ *
  * Generic file attachments queued in the composer are uploaded here, after
  * createConversation() resolves (the workspace only exists then) and before
  * navigation, via POST /files/upload. Their workspace-relative names are stashed
@@ -33,6 +42,7 @@ import { uploadComposerAttachments, uploadFiles } from '../api/fileApi';
 import { seedNewConversation } from '../utils/newConversation';
 import type { ComposerAttachmentRef } from '../api/types';
 import { HOME_DRAFT_KEY } from '../constants/drafts';
+import type { ModelVisibility } from '../constants/models';
 import { Composer } from './Composer';
 import { HeartBoltMorph } from './HeartBoltMorph';
 import './HomeComposer.css';
@@ -64,24 +74,39 @@ export function HomeComposer({ onNewConversation }: HomeComposerProps) {
     projects,
   } = useConversationContext();
 
-  // Always-fresh fetch on mount: re-read the per-user default from the server
-  // (GET /me) so the home composer reflects the latest server default
-  // regardless of what other tabs did, then re-seed the draft-keyed model entry
-  // so it does not shadow the refreshed default. No localStorage, no WS push.
+  // When the Sidebar is drilled into a project, the first send targets that
+  // project; name it under the greeting so the destination is visible.
+  const drilledProject = drilledProjectId
+    ? projects.find((p) => p.id === drilledProjectId) ?? null
+    : null;
+  const drilledProjectName = drilledProject?.name ?? null;
+  // A public project's first chat starts here too: the composer needs to
+  // know so it offers only public-allowed models (and shows the
+  // sensitive-info banner / hides the Skill button like ChatPanel does).
+  const isPublicProject = Boolean(drilledProject?.public);
+  const modelVisibility: ModelVisibility = isPublicProject ? 'public' : 'private';
+
+  // Always-fresh fetch on mount AND on every private<->public context switch
+  // (drilling into / out of a public project keeps this composer mounted):
+  // re-read the per-user last-used model for the current context from the
+  // server (GET /me) so the home composer reflects the latest server value
+  // regardless of what other tabs did, then re-seed the draft-keyed model
+  // entry so it does not shadow the refreshed default. A switch while a
+  // refresh is in flight cancels the stale one. No localStorage, no WS push.
   useEffect(() => {
     let cancelled = false;
-    refreshDefaultModel().then((resolved) => {
+    refreshDefaultModel(modelVisibility).then((resolved) => {
       if (cancelled) return;
       // Re-key the draft entry to the freshly-resolved server default so
       // getModelForConversation(HOME_DRAFT_KEY) returns it rather than a stale
-      // draft selection left over from a previous mount.
-      setDraftModelForConversation(HOME_DRAFT_KEY, resolved);
+      // draft selection left over from a previous mount / the other context.
+      setDraftModelForConversation(HOME_DRAFT_KEY, resolved, modelVisibility);
     });
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [modelVisibility]);
 
   // Guard against double-submit while a createConversation() is in flight.
   const [submitting, setSubmitting] = useState(false);
@@ -93,17 +118,6 @@ export function HomeComposer({ onNewConversation }: HomeComposerProps) {
   const greeting = firstName
     ? `What can I help you with, ${firstName}?`
     : 'What can I help you with?';
-
-  // When the Sidebar is drilled into a project, the first send targets that
-  // project; name it under the greeting so the destination is visible.
-  const drilledProject = drilledProjectId
-    ? projects.find((p) => p.id === drilledProjectId) ?? null
-    : null;
-  const drilledProjectName = drilledProject?.name ?? null;
-  // A public project's first chat starts here too: the composer needs to
-  // know so it offers only public-allowed models (and shows the
-  // sensitive-info banner / hides the Skill button like ChatPanel does).
-  const isPublicProject = Boolean(drilledProject?.public);
 
   // The shared composer's onSend. The text/model/skills/flags come from the
   // composer's own state + the draft-keyed context maps. ``attachments`` (the
@@ -207,6 +221,7 @@ export function HomeComposer({ onNewConversation }: HomeComposerProps) {
             model: effectiveModel,
             skillIds: effectiveSkills,
             flags: flags ?? [],
+            isPublicProject,
             attachedFilenames,
             attachments,
           });
@@ -240,6 +255,7 @@ export function HomeComposer({ onNewConversation }: HomeComposerProps) {
     },
     [
       drilledProjectId,
+      isPublicProject,
       getModelForConversation,
       getQueuedSkillsForConversation,
       setQueuedSkillsForConversation,
@@ -272,7 +288,7 @@ export function HomeComposer({ onNewConversation }: HomeComposerProps) {
               skipSendLocks
               deferImageUpload
               isPublicProject={isPublicProject}
-              onModelChange={(m) => setDraftModelForConversation(HOME_DRAFT_KEY, m)}
+              onModelChange={(m) => setDraftModelForConversation(HOME_DRAFT_KEY, m, modelVisibility)}
             />
           </div>
         </div>
