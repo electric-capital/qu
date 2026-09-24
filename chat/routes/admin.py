@@ -839,11 +839,16 @@ def _model_selection_view() -> dict:
     Rows are the models an admin can meaningfully curate; entries stored
     for models that are currently disabled or removed stay in the file
     untouched by reads but are dropped by the next full-replacement PUT.
+    ``public_mode_enabled`` tells the UI whether to show the public-menu
+    slot, the Private/Public columns and the public preview at all; the
+    rows carry the STORED flags regardless so a save while the gate is
+    off preserves them.
     """
     from chat.llm.config import get_available_models, get_configured_models, list_model_specs
     from config.model_selection import (
         MAX_DESCRIPTOR_LENGTH,
         MAX_TOP_LEVEL_SLOTS,
+        public_mode_enabled,
         read_model_selection,
         selection_for,
     )
@@ -874,6 +879,7 @@ def _model_selection_view() -> dict:
     return {
         "max_slots": MAX_TOP_LEVEL_SLOTS,
         "max_descriptor_length": MAX_DESCRIPTOR_LENGTH,
+        "public_mode_enabled": public_mode_enabled(),
         "models": rows,
     }
 
@@ -882,8 +888,8 @@ def _model_selection_view() -> dict:
 async def admin_get_model_selection(
     user: dict = Depends(get_current_user_cookie_or_apikey_checked),
 ):
-    """The per-model selection settings (top-level slot, descriptor,
-    private/public usage flags) for every enabled model."""
+    """The per-model selection settings (private/public top-level slots,
+    descriptor, private/public usage flags) for every enabled model."""
     _require_admin(user)
     return _model_selection_view()
 
@@ -891,6 +897,7 @@ async def admin_get_model_selection(
 class ModelSelectionEntry(BaseModel):
     id: str
     slot: Optional[int] = None
+    public_slot: Optional[int] = None
     descriptor: str = ""
     allow_private: bool = True
     allow_public: bool = True
@@ -910,8 +917,10 @@ async def admin_update_model_selection(
     """Replace the whole model selection (persisted in data/model_selection.json).
 
     Rejects unknown model ids, slots outside ``1..max_slots``, descriptors
-    over the length cap, and duplicate slots (400). Takes effect on the next
-    GET /app/api/config fetch and the next conversation turn.
+    over the length cap, and duplicate slots within a menu (400). A slot for
+    a visibility the model is not allowed in is cleared, not rejected.
+    Takes effect on the next GET /app/api/config fetch and the next
+    conversation turn.
     """
     _require_admin(user)
     from chat.llm.config import resolve_model
@@ -935,14 +944,16 @@ async def admin_update_model_selection(
                 status_code=400,
                 detail={"error": "unknown_model", "message": f"Unknown model: {entry.id}"},
             )
-        if entry.slot is not None and not 1 <= entry.slot <= MAX_TOP_LEVEL_SLOTS:
-            raise _bad(f"Slot must be between 1 and {MAX_TOP_LEVEL_SLOTS}: {entry.id}")
+        for slot in (entry.slot, entry.public_slot):
+            if slot is not None and not 1 <= slot <= MAX_TOP_LEVEL_SLOTS:
+                raise _bad(f"Slot must be between 1 and {MAX_TOP_LEVEL_SLOTS}: {entry.id}")
         if len(entry.descriptor.strip()) > MAX_DESCRIPTOR_LENGTH:
             raise _bad(
                 f"Descriptor longer than {MAX_DESCRIPTOR_LENGTH} characters: {entry.id}"
             )
         entries[entry.id] = {
             "slot": entry.slot,
+            "public_slot": entry.public_slot,
             "descriptor": entry.descriptor,
             "allow_private": entry.allow_private,
             "allow_public": entry.allow_public,
@@ -954,7 +965,7 @@ async def admin_update_model_selection(
     logger.info(
         "[admin] %s updated model selection: %d slotted, %d restricted",
         user["email"],
-        sum(1 for e in stored.values() if e["slot"] is not None),
+        sum(1 for e in stored.values() if e["slot"] is not None or e["public_slot"] is not None),
         sum(1 for e in stored.values() if not (e["allow_private"] and e["allow_public"])),
     )
     return _model_selection_view()

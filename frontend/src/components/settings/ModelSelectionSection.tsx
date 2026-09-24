@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { fetchModelSelection, updateModelSelection } from '../../api/client';
 import type { ModelSelectionListResponse, ModelSelectionRow } from '../../api/types';
+import type { ModelVisibility } from '../../constants/models';
 import { useConversationContext } from '../../contexts/ConversationContext';
 import { SaveActions } from './ServiceCredentialsSection';
 import type { SaveStatus } from './ServiceCredentialsSection';
@@ -14,6 +15,7 @@ function errorMessage(error: unknown, fallback: string): string {
 /** The editable part of a row, keyed by model id in the draft. */
 interface Draft {
   slot: number | null;
+  publicSlot: number | null;
   descriptor: string;
   allowPrivate: boolean;
   allowPublic: boolean;
@@ -22,6 +24,7 @@ interface Draft {
 function draftOf(row: ModelSelectionRow): Draft {
   return {
     slot: row.slot,
+    publicSlot: row.public_slot,
     descriptor: row.descriptor,
     allowPrivate: row.allow_private,
     allowPublic: row.allow_public,
@@ -30,9 +33,18 @@ function draftOf(row: ModelSelectionRow): Draft {
 
 function sameDraft(a: Draft, b: Draft): boolean {
   return a.slot === b.slot
+    && a.publicSlot === b.publicSlot
     && a.descriptor === b.descriptor
     && a.allowPrivate === b.allowPrivate
     && a.allowPublic === b.allowPublic;
+}
+
+function slotOf(draft: Draft, visibility: ModelVisibility): number | null {
+  return visibility === 'public' ? draft.publicSlot : draft.slot;
+}
+
+function allowedIn(draft: Draft, visibility: ModelVisibility): boolean {
+  return visibility === 'public' ? draft.allowPublic : draft.allowPrivate;
 }
 
 const UNAVAILABLE_LABELS: Record<NonNullable<ModelSelectionRow['unavailable_reason']>, string> = {
@@ -41,24 +53,30 @@ const UNAVAILABLE_LABELS: Record<NonNullable<ModelSelectionRow['unavailable_reas
 };
 
 /**
- * Static rendering of the composer's model menu as the draft would show it:
- * the slotted models in slot order (descriptor over model name, or the bare
- * name when the descriptor is empty) above the "All models" row. Reuses the
- * real menu's class names from ChatPanel.css so the preview is faithful;
- * the wrapper undoes the popover positioning.
+ * Static rendering of the composer's model menu for one visibility as the
+ * draft would show it: the models slotted in that menu in slot order
+ * (descriptor over model name, or the bare name when the descriptor is
+ * empty) above the "All models" row. Reuses the real menu's class names
+ * from ChatPanel.css so the preview is faithful; the wrapper undoes the
+ * popover positioning.
  */
 function ModelMenuPreview({
+  title,
+  visibility,
   rows,
   drafts,
 }: {
+  title: string;
+  visibility: ModelVisibility;
   rows: ModelSelectionRow[];
   drafts: Record<string, Draft>;
 }) {
   const picks = rows
-    .filter((row) => drafts[row.id]?.slot !== null && drafts[row.id]?.slot !== undefined)
-    .sort((a, b) => (drafts[a.id].slot as number) - (drafts[b.id].slot as number));
+    .filter((row) => drafts[row.id] && slotOf(drafts[row.id], visibility) !== null)
+    .sort((a, b) => (slotOf(drafts[a.id], visibility) as number) - (slotOf(drafts[b.id], visibility) as number));
   return (
-    <div className="model-selection-preview" aria-label="Model menu preview">
+    <div className="model-selection-preview" aria-label={`${title} preview`}>
+      <h5 className="model-selection-side-title">{title}</h5>
       <div className="model-menu" role="presentation">
         {picks.map((row) => {
           const draft = drafts[row.id];
@@ -97,10 +115,12 @@ function ModelMenuPreview({
 /**
  * Admin-only table of every enabled model (one row each) with the per-model
  * selection settings persisted server-side in data/model_selection.json:
- * which top-level slot of the composer's model menu it occupies (if any),
- * the descriptor shown there, and whether it may be used in private and/or
- * public-project conversations. Edits accumulate in a draft and are saved
- * as one full replacement; the preview on the right renders the draft.
+ * which top-level slot of the composer's model menu it occupies (if any)
+ * and the descriptor shown there. While public projects are switched on
+ * (Settings > Features), public-project conversations get their own top
+ * level, so the table grows a second slot column plus the Private/Public
+ * "allowed" checkboxes, and a second preview. Edits accumulate in a draft
+ * and are saved as one full replacement; the previews render the draft.
  */
 export function ModelSelectionSection() {
   const { refreshModelCatalog } = useConversationContext();
@@ -136,22 +156,35 @@ export function ModelSelectionSection() {
     [data, drafts],
   );
 
-  const updateDraft = useCallback((modelId: string, patch: Partial<Draft>) => {
-    setDrafts((prev) => ({ ...prev, [modelId]: { ...prev[modelId], ...patch } }));
-  }, []);
-
-  // Slots are unique: giving a model a slot another model holds swaps the
-  // two (the other model takes this one's previous slot, possibly none), so
-  // nothing silently drops out of the top level.
-  const setSlot = useCallback((modelId: string, slot: number | null) => {
+  // Slots are unique per menu: giving a model a slot another model holds
+  // swaps the two (the other model takes this one's previous slot, possibly
+  // none), so nothing silently drops out of the top level.
+  const setSlot = useCallback((modelId: string, visibility: ModelVisibility, slot: number | null) => {
+    const field = visibility === 'public' ? 'publicSlot' : 'slot';
     setDrafts((prev) => {
-      const previous = prev[modelId].slot;
-      const next = { ...prev, [modelId]: { ...prev[modelId], slot } };
+      const previous = prev[modelId][field];
+      const next = { ...prev, [modelId]: { ...prev[modelId], [field]: slot } };
       if (slot !== null) {
-        const holder = Object.keys(prev).find((id) => id !== modelId && prev[id].slot === slot);
-        if (holder) next[holder] = { ...prev[holder], slot: previous };
+        const holder = Object.keys(prev).find((id) => id !== modelId && prev[id][field] === slot);
+        if (holder) next[holder] = { ...prev[holder], [field]: previous };
       }
       return next;
+    });
+  }, []);
+
+  const setDescriptor = useCallback((modelId: string, descriptor: string) => {
+    setDrafts((prev) => ({ ...prev, [modelId]: { ...prev[modelId], descriptor } }));
+  }, []);
+
+  // Unticking a visibility also vacates that menu's slot (the server would
+  // clear it anyway); re-ticking does not restore it.
+  const setAllowed = useCallback((modelId: string, visibility: ModelVisibility, allowed: boolean) => {
+    setDrafts((prev) => {
+      const current = prev[modelId];
+      const patch: Partial<Draft> = visibility === 'public'
+        ? { allowPublic: allowed, publicSlot: allowed ? current.publicSlot : null }
+        : { allowPrivate: allowed, slot: allowed ? current.slot : null };
+      return { ...prev, [modelId]: { ...current, ...patch } };
     });
   }, []);
 
@@ -172,6 +205,7 @@ export function ModelSelectionSection() {
           return {
             id: row.id,
             slot: draft.slot,
+            public_slot: draft.publicSlot,
             descriptor: draft.descriptor.trim(),
             allow_private: draft.allowPrivate,
             allow_public: draft.allowPublic,
@@ -207,7 +241,9 @@ export function ModelSelectionSection() {
     return out;
   }, [data]);
 
+  const publicMode = data?.public_mode_enabled ?? false;
   const slotOptions = data ? Array.from({ length: data.max_slots }, (_, i) => i + 1) : [];
+  const columnCount = publicMode ? 6 : 3;
 
   return (
     <div className="settings-section">
@@ -215,26 +251,43 @@ export function ModelSelectionSection() {
       <p className="settings-description">
         How the enabled models are offered to users. Pin up to {data?.max_slots ?? 5} models
         to the top level of the composer's model menu with a descriptor of your choice
-        (everything else stays under "All models"), and choose whether each model may be
-        used in private conversations or in public-project conversations. Applies to all
-        users. Admin only.
+        (everything else stays under "All models").
+        {publicMode
+          ? ' Public-project conversations get their own top level, and each model can be allowed or blocked for private and for public conversations.'
+          : ' Turn on Public projects in Features to get a separate top level and per-model allow rules for public-project conversations.'}
+        {' '}Applies to all users. Admin only.
       </p>
       {loadError ? (
         <div className="svc-cred-load-error">{loadError}</div>
       ) : data === null ? (
         <div className="settings-loading">Loading...</div>
       ) : (
-        <div className="model-selection-layout">
+        <div className={`model-selection-layout${publicMode ? ' public-mode' : ''}`}>
           <div className="model-selection-main">
-            <table className="model-selection-table">
+            <table className={`model-selection-table${publicMode ? ' public-mode' : ''}`}>
               <thead>
-                <tr>
-                  <th className="model-selection-col-model">Model</th>
-                  <th className="model-selection-col-slot" title="Position in the top level of the model menu">Top-level slot</th>
-                  <th className="model-selection-col-descriptor" title="Label shown for the model in the top level of the menu">Descriptor</th>
-                  <th className="model-selection-col-check" title="May be used in standalone and project conversations, routines, Slack and API runs">Private</th>
-                  <th className="model-selection-col-check" title="May be used in public-project conversations (internet-enabled sandbox)">Public</th>
-                </tr>
+                {publicMode ? (
+                  <>
+                    <tr className="model-selection-header-groups">
+                      <th className="model-selection-col-model" rowSpan={2}>Model</th>
+                      <th className="model-selection-col-descriptor" rowSpan={2} title="Label shown for the model in the top level of either menu">Descriptor</th>
+                      <th colSpan={2} className="model-selection-header-group" title="Standalone and project conversations, routines, Slack and API runs">Private conversations</th>
+                      <th colSpan={2} className="model-selection-header-group" title="Public-project conversations (internet-enabled sandbox)">Public conversations</th>
+                    </tr>
+                    <tr>
+                      <th className="model-selection-col-slot" title="Position in the top level of the private menu">Slot</th>
+                      <th className="model-selection-col-check" title="May be used in private conversations">Allowed</th>
+                      <th className="model-selection-col-slot" title="Position in the top level of the public menu">Slot</th>
+                      <th className="model-selection-col-check" title="May be used in public-project conversations">Allowed</th>
+                    </tr>
+                  </>
+                ) : (
+                  <tr>
+                    <th className="model-selection-col-model">Model</th>
+                    <th className="model-selection-col-slot" title="Position in the top level of the model menu">Top-level slot</th>
+                    <th className="model-selection-col-descriptor" title="Label shown for the model in the top level of the menu">Descriptor</th>
+                  </tr>
+                )}
               </thead>
               <tbody>
                 {groups.map((group) => (
@@ -243,11 +296,14 @@ export function ModelSelectionSection() {
                     label={group.label}
                     rows={group.rows}
                     drafts={drafts}
+                    publicMode={publicMode}
+                    columnCount={columnCount}
                     slotOptions={slotOptions}
                     maxDescriptorLength={data.max_descriptor_length}
                     busy={saveStatus === 'saving'}
                     onSlot={setSlot}
-                    onChange={updateDraft}
+                    onDescriptor={setDescriptor}
+                    onAllowed={setAllowed}
                   />
                 ))}
               </tbody>
@@ -255,8 +311,8 @@ export function ModelSelectionSection() {
             <p className="model-selection-note">
               A dot after a model's name means it is currently hidden from users — its
               provider is not configured (grey) or failing its health check (red); fix that
-              in Inference Providers. Unticking Private or Public also stops existing
-              conversations of that kind from continuing on the model until they switch.
+              in Inference Providers.
+              {publicMode && ' Unticking Allowed also stops existing conversations of that kind from continuing on the model until they switch.'}
             </p>
             <div className="model-selection-actions">
               <SaveActions
@@ -273,10 +329,20 @@ export function ModelSelectionSection() {
             </div>
           </div>
           <aside className="model-selection-side">
-            <h5 className="model-selection-side-title">
-              Menu preview{dirty ? ' (unsaved)' : ''}
-            </h5>
-            <ModelMenuPreview rows={data.models} drafts={drafts} />
+            <ModelMenuPreview
+              title={`${publicMode ? 'Private menu' : 'Menu preview'}${dirty ? ' (unsaved)' : ''}`}
+              visibility="private"
+              rows={data.models}
+              drafts={drafts}
+            />
+            {publicMode && (
+              <ModelMenuPreview
+                title={`Public menu${dirty ? ' (unsaved)' : ''}`}
+                visibility="public"
+                rows={data.models}
+                drafts={drafts}
+              />
+            )}
           </aside>
         </div>
       )}
@@ -284,92 +350,140 @@ export function ModelSelectionSection() {
   );
 }
 
+function SlotSelect({
+  row,
+  visibility,
+  value,
+  disabled,
+  slotOptions,
+  onChange,
+}: {
+  row: ModelSelectionRow;
+  visibility: ModelVisibility;
+  value: number | null;
+  disabled: boolean;
+  slotOptions: number[];
+  onChange: (slot: number | null) => void;
+}) {
+  return (
+    <select
+      className="model-selection-slot-select"
+      value={value ?? ''}
+      disabled={disabled}
+      aria-label={`${visibility === 'public' ? 'Public' : 'Private'} top-level slot for ${row.display_name}`}
+      onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))}
+    >
+      <option value="">—</option>
+      {slotOptions.map((n) => (
+        <option key={n} value={n}>{n}</option>
+      ))}
+    </select>
+  );
+}
+
 function GroupRows({
   label,
   rows,
   drafts,
+  publicMode,
+  columnCount,
   slotOptions,
   maxDescriptorLength,
   busy,
   onSlot,
-  onChange,
+  onDescriptor,
+  onAllowed,
 }: {
   label: string;
   rows: ModelSelectionRow[];
   drafts: Record<string, Draft>;
+  publicMode: boolean;
+  columnCount: number;
   slotOptions: number[];
   maxDescriptorLength: number;
   busy: boolean;
-  onSlot: (modelId: string, slot: number | null) => void;
-  onChange: (modelId: string, patch: Partial<Draft>) => void;
+  onSlot: (modelId: string, visibility: ModelVisibility, slot: number | null) => void;
+  onDescriptor: (modelId: string, descriptor: string) => void;
+  onAllowed: (modelId: string, visibility: ModelVisibility, allowed: boolean) => void;
 }) {
   return (
     <>
       <tr className="model-selection-group-row">
-        <th colSpan={5} scope="rowgroup">{label}</th>
+        <th colSpan={columnCount} scope="rowgroup">{label}</th>
       </tr>
       {rows.map((row) => {
         const draft = drafts[row.id];
+        const slotted = draft.slot !== null || (publicMode && draft.publicSlot !== null);
+        const modelCell = (
+          <td className="model-selection-col-model">
+            <div className="model-selection-model-name">
+              <span className="model-selection-model-name-text">{row.display_name}</span>
+              {!row.available && row.unavailable_reason && (
+                <span
+                  className={`model-selection-status-dot ${row.unavailable_reason}`}
+                  role="img"
+                  aria-label={UNAVAILABLE_LABELS[row.unavailable_reason]}
+                  title={`${UNAVAILABLE_LABELS[row.unavailable_reason]} — hidden from users until the provider works (see Inference Providers)`}
+                />
+              )}
+            </div>
+            <div className="model-selection-model-id" title={row.id}>{row.wire_id}</div>
+          </td>
+        );
+        const descriptorCell = (
+          <td className="model-selection-col-descriptor">
+            <input
+              type="text"
+              className="svc-cred-input model-selection-descriptor-input"
+              value={draft.descriptor}
+              maxLength={maxDescriptorLength}
+              disabled={busy}
+              placeholder={slotted ? 'e.g. Smart ($$$)' : 'Shown when slotted'}
+              aria-label={`Descriptor for ${row.display_name}`}
+              onChange={(e) => onDescriptor(row.id, e.target.value)}
+            />
+          </td>
+        );
+        const slotCell = (visibility: ModelVisibility) => (
+          <td className="model-selection-col-slot">
+            <SlotSelect
+              row={row}
+              visibility={visibility}
+              value={slotOf(draft, visibility)}
+              disabled={busy || (publicMode && !allowedIn(draft, visibility))}
+              slotOptions={slotOptions}
+              onChange={(slot) => onSlot(row.id, visibility, slot)}
+            />
+          </td>
+        );
+        const allowedCell = (visibility: ModelVisibility) => (
+          <td className="model-selection-col-check">
+            <input
+              type="checkbox"
+              checked={allowedIn(draft, visibility)}
+              disabled={busy}
+              aria-label={`Allow ${row.display_name} in ${visibility} conversations`}
+              onChange={(e) => onAllowed(row.id, visibility, e.target.checked)}
+            />
+          </td>
+        );
         return (
           <tr key={row.id} className={`model-selection-row${row.available ? '' : ' unavailable'}`}>
-            <td className="model-selection-col-model">
-              <div className="model-selection-model-name">
-                <span className="model-selection-model-name-text">{row.display_name}</span>
-                {!row.available && row.unavailable_reason && (
-                  <span
-                    className={`model-selection-status-dot ${row.unavailable_reason}`}
-                    role="img"
-                    aria-label={UNAVAILABLE_LABELS[row.unavailable_reason]}
-                    title={`${UNAVAILABLE_LABELS[row.unavailable_reason]} — hidden from users until the provider works (see Inference Providers)`}
-                  />
-                )}
-              </div>
-              <div className="model-selection-model-id" title={row.id}>{row.wire_id}</div>
-            </td>
-            <td className="model-selection-col-slot">
-              <select
-                className="model-selection-slot-select"
-                value={draft.slot ?? ''}
-                disabled={busy}
-                aria-label={`Top-level slot for ${row.display_name}`}
-                onChange={(e) => onSlot(row.id, e.target.value === '' ? null : Number(e.target.value))}
-              >
-                <option value="">—</option>
-                {slotOptions.map((n) => (
-                  <option key={n} value={n}>{n}</option>
-                ))}
-              </select>
-            </td>
-            <td className="model-selection-col-descriptor">
-              <input
-                type="text"
-                className="svc-cred-input model-selection-descriptor-input"
-                value={draft.descriptor}
-                maxLength={maxDescriptorLength}
-                disabled={busy}
-                placeholder={draft.slot === null ? 'Shown when slotted' : 'e.g. Smart ($$$)'}
-                aria-label={`Descriptor for ${row.display_name}`}
-                onChange={(e) => onChange(row.id, { descriptor: e.target.value })}
-              />
-            </td>
-            <td className="model-selection-col-check">
-              <input
-                type="checkbox"
-                checked={draft.allowPrivate}
-                disabled={busy}
-                aria-label={`Allow ${row.display_name} in private conversations`}
-                onChange={(e) => onChange(row.id, { allowPrivate: e.target.checked })}
-              />
-            </td>
-            <td className="model-selection-col-check">
-              <input
-                type="checkbox"
-                checked={draft.allowPublic}
-                disabled={busy}
-                aria-label={`Allow ${row.display_name} in public conversations`}
-                onChange={(e) => onChange(row.id, { allowPublic: e.target.checked })}
-              />
-            </td>
+            {modelCell}
+            {publicMode ? (
+              <>
+                {descriptorCell}
+                {slotCell('private')}
+                {allowedCell('private')}
+                {slotCell('public')}
+                {allowedCell('public')}
+              </>
+            ) : (
+              <>
+                {slotCell('private')}
+                {descriptorCell}
+              </>
+            )}
           </tr>
         );
       })}

@@ -9,12 +9,17 @@ enabled, non-deprecated model) and persisted as JSON in ``DATA_DIR /
 
 - ``slot`` -- ``1..MAX_TOP_LEVEL_SLOTS`` when the model is pinned to the top
   level of the composer's model menu (the part above the "All models"
-  flyout), ``None`` otherwise. Slots are unique across models; the top
-  level lists slotted models in slot order.
-- ``descriptor`` -- the free-text label shown for a slotted model in the
-  top level ("Smart ($$$)"), with the model's own name as the sublabel. An
-  empty descriptor shows the model name alone. Admins put cost markers or
-  anything else they like in here; the app never parses it.
+  flyout) in private conversations, ``None`` otherwise. Slots are unique
+  across models; the top level lists slotted models in slot order.
+- ``public_slot`` -- the same for the menu shown in public-project
+  conversations, which is a separate top level (a public sandbox usually
+  wants cheaper or more locked-down picks). Only meaningful while public
+  mode is on (see below).
+- ``descriptor`` -- the free-text label shown for a slotted model in
+  either top level ("Smart ($$$)"), with the model's own name as the
+  sublabel. An empty descriptor shows the model name alone. Admins put
+  cost markers or anything else they like in here; the app never parses
+  it.
 - ``allow_private`` / ``allow_public`` -- whether the model may be used in
   private conversations (everything that is not in a public project:
   standalone chats, project chats, routines, Slack, subagent and inference
@@ -24,7 +29,17 @@ enabled, non-deprecated model) and persisted as JSON in ``DATA_DIR /
   these are *usage* rules: the composer hides disallowed models from the
   menu and ``run_conversation_turn`` refuses a turn on a disallowed model,
   so an existing conversation on a model that was later disallowed gets a
-  durable error until the user switches models.
+  durable error until the user switches models. A model that is not
+  allowed for a visibility cannot hold that visibility's slot
+  (normalization clears it).
+
+**Public mode.** The public-project distinction only exists while the
+server-global ``public_projects`` feature gate is on for anyone
+(:func:`public_mode_enabled`, see config/feature_gates.py). While it is
+off there is one kind of conversation, so the admin table hides the
+Private/Public columns and the public slot, ``is_model_allowed`` allows
+everything, and the catalog reports both flags as allowed; the stored
+values are kept untouched so switching the gate back on restores them.
 
 Models absent from the file get :data:`UNSET_ENTRY` (no slot, empty
 descriptor, allowed everywhere). A MISSING file means the app's historical
@@ -57,22 +72,44 @@ MAX_TOP_LEVEL_SLOTS = 5
 # Descriptor length cap (the menu row is narrow; the UI ellipsizes anyway).
 MAX_DESCRIPTOR_LENGTH = 60
 
+# The two slot fields, keyed by the visibility whose menu they shape.
+SLOT_FIELDS: dict[str, str] = {"private": "slot", "public": "public_slot"}
+
 # Selection settings for a model the file does not mention.
 UNSET_ENTRY: dict = {
     "slot": None,
+    "public_slot": None,
     "descriptor": "",
     "allow_private": True,
     "allow_public": True,
 }
 
 # What a fresh install (no model_selection.json yet) shows at the top of
-# the model menu: the curated picks the frontend used to hardcode in
+# both model menus: the curated picks the frontend used to hardcode in
 # RECOMMENDED_MODELS. Only consulted while the file is absent.
 DEFAULT_MODEL_SELECTION: dict[str, dict] = {
-    "claude-opus-4-8": {**UNSET_ENTRY, "slot": 1, "descriptor": "Smart ($$$)"},
-    "claude-sonnet-5": {**UNSET_ENTRY, "slot": 2, "descriptor": "Faster ($$)"},
-    "gemini-3.8-flash": {**UNSET_ENTRY, "slot": 3, "descriptor": "Fastest ($)"},
+    "claude-opus-4-8": {**UNSET_ENTRY, "slot": 1, "public_slot": 1, "descriptor": "Smart ($$$)"},
+    "claude-sonnet-5": {**UNSET_ENTRY, "slot": 2, "public_slot": 2, "descriptor": "Faster ($$)"},
+    "gemini-3.8-flash": {**UNSET_ENTRY, "slot": 3, "public_slot": 3, "descriptor": "Fastest ($)"},
 }
+
+
+def public_mode_enabled() -> bool:
+    """Whether public projects are switched on server-wide (for anyone).
+
+    The per-user restriction of the gate is irrelevant here: as soon as any
+    user can have public projects, the public menu and the usage flags
+    matter.
+    """
+    from config.feature_gates import FEATURE_PUBLIC_PROJECTS, is_feature_enabled
+
+    return is_feature_enabled(FEATURE_PUBLIC_PROJECTS)
+
+
+def _normalize_slot(value) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return value if 1 <= value <= MAX_TOP_LEVEL_SLOTS else None
 
 
 def normalize_entry(value) -> dict:
@@ -80,20 +117,21 @@ def normalize_entry(value) -> dict:
 
     Out-of-range slots become ``None``, non-string descriptors become
     ``""`` (strings are trimmed and truncated to ``MAX_DESCRIPTOR_LENGTH``),
-    and non-bool allow flags fall back to allowed. Never raises.
+    non-bool allow flags fall back to allowed, and a slot for a visibility
+    the model is not allowed in is cleared. Never raises.
     """
     if not isinstance(value, dict):
         return dict(UNSET_ENTRY)
-    slot = value.get("slot")
-    if isinstance(slot, bool) or not isinstance(slot, int) or not 1 <= slot <= MAX_TOP_LEVEL_SLOTS:
-        slot = None
+    allow_private = value.get("allow_private", True) is not False
+    allow_public = value.get("allow_public", True) is not False
     descriptor = value.get("descriptor")
     descriptor = descriptor.strip()[:MAX_DESCRIPTOR_LENGTH] if isinstance(descriptor, str) else ""
     return {
-        "slot": slot,
+        "slot": _normalize_slot(value.get("slot")) if allow_private else None,
+        "public_slot": _normalize_slot(value.get("public_slot")) if allow_public else None,
         "descriptor": descriptor,
-        "allow_private": value.get("allow_private", True) is not False,
-        "allow_public": value.get("allow_public", True) is not False,
+        "allow_private": allow_private,
+        "allow_public": allow_public,
     }
 
 
@@ -124,20 +162,23 @@ def read_model_selection() -> dict[str, dict]:
         logger.warning("Ignoring malformed model selection file: %s", MODEL_SELECTION_FILE)
         return {}
     entries: dict[str, dict] = {}
-    taken_slots: set[int] = set()
+    taken: dict[str, set[int]] = {field: set() for field in SLOT_FIELDS.values()}
     for model_id, raw in models.items():
         if not isinstance(model_id, str) or not model_id:
             continue
         entry = normalize_entry(raw)
-        if entry["slot"] is not None:
-            if entry["slot"] in taken_slots:
+        for field in SLOT_FIELDS.values():
+            slot = entry[field]
+            if slot is None:
+                continue
+            if slot in taken[field]:
                 logger.warning(
-                    "Duplicate top-level slot %s in %s; dropping it from %s",
-                    entry["slot"], MODEL_SELECTION_FILE, model_id,
+                    "Duplicate %s %s in %s; dropping it from %s",
+                    field, slot, MODEL_SELECTION_FILE, model_id,
                 )
-                entry["slot"] = None
+                entry[field] = None
             else:
-                taken_slots.add(entry["slot"])
+                taken[field].add(slot)
         entries[model_id] = entry
     return entries
 
@@ -145,23 +186,26 @@ def read_model_selection() -> dict[str, dict]:
 def validate_model_selection(entries: dict[str, dict]) -> dict[str, dict]:
     """Normalize a full ``{model_id: entry}`` mapping and check slot uniqueness.
 
-    Raises ``ValueError`` when two models claim the same slot. Entries
-    equal to :data:`UNSET_ENTRY` are dropped (they carry no information).
+    Raises ``ValueError`` when two models claim the same slot of the same
+    menu (private and public slots are independent). Entries equal to
+    :data:`UNSET_ENTRY` are dropped (they carry no information).
     """
     normalized: dict[str, dict] = {}
-    slot_owner: dict[int, str] = {}
+    owners: dict[str, dict[int, str]] = {field: {} for field in SLOT_FIELDS.values()}
     for model_id, raw in entries.items():
         if not isinstance(model_id, str) or not model_id:
             continue
         entry = normalize_entry(raw)
-        slot = entry["slot"]
-        if slot is not None:
-            if slot in slot_owner:
+        for visibility, field in SLOT_FIELDS.items():
+            slot = entry[field]
+            if slot is None:
+                continue
+            if slot in owners[field]:
                 raise ValueError(
-                    f"Top-level slot {slot} is assigned to both "
-                    f"{slot_owner[slot]} and {model_id}"
+                    f"{visibility.capitalize()} top-level slot {slot} is assigned "
+                    f"to both {owners[field][slot]} and {model_id}"
                 )
-            slot_owner[slot] = model_id
+            owners[field][slot] = model_id
         if not _is_unset(entry):
             normalized[model_id] = entry
     return normalized
@@ -212,7 +256,14 @@ def selection_for(model_id: str, entries: dict[str, dict] | None = None) -> dict
 
 def is_model_allowed(model_id: str, *, public: bool) -> bool:
     """Whether ``model_id`` may run a turn in a public (``True``) or private
-    (``False``) conversation. Unknown/unlisted models are allowed -- the
-    provider layer decides whether they exist."""
+    (``False``) conversation.
+
+    Always True while public mode is off (there is only one kind of
+    conversation then, and the admin table hides the flags). Unknown /
+    unlisted models are allowed -- the provider layer decides whether they
+    exist.
+    """
+    if not public_mode_enabled():
+        return True
     entry = selection_for(model_id)
     return entry["allow_public"] if public else entry["allow_private"]

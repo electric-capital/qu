@@ -417,6 +417,7 @@ def test_helper_lookups(store):
         "deprecated": False,
         # Admin Model Selection fields (config/model_selection.py), unset here
         "slot": None,
+        "public_slot": None,
         "descriptor": "",
         "allow_private": True,
         "allow_public": True,

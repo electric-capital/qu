@@ -2,10 +2,12 @@
  * ModelSelector -- the composer's two-level model menu.
  *
  * Replaces the old flat native <select>: the top level shows the admin's
- * slotted picks (Settings > Model Selection: up to five models, each shown
- * as its descriptor -- e.g. "Smart ($$$)" -- sublabeled with its concrete
- * model name, or as the bare model name when the descriptor is empty) and
- * an "All models" row that opens a flyout submenu with the full model list.
+ * slotted picks for the conversation's visibility (Settings > Model
+ * Selection keeps separate private and public-project top levels: up to
+ * five models each, shown as the descriptor -- e.g. "Smart ($$$)" --
+ * sublabeled with the concrete model name, or as the bare model name when
+ * the descriptor is empty) and an "All models" row that opens a flyout
+ * submenu with the full model list.
  *
  * The host passes the already-filtered model list (credentialed models,
  * allowed for the conversation's visibility, narrowed by the conversation's
@@ -42,8 +44,9 @@ export interface ModelSelectorProps {
    */
   labelOverride?: string;
   /**
-   * Visibility of the conversation the menu is for; only used to explain
-   * why a current selection is not in `models` ("(not allowed here)").
+   * Visibility of the conversation the menu is for: selects which admin
+   * top level (private or public) to show and explains why a current
+   * selection is not in `models` ("(not allowed here)").
    */
   visibility?: ModelVisibility;
 }
@@ -92,8 +95,9 @@ export function ModelSelector({
     close();
   }, [onSelect, close]);
 
-  // The admin's top-level picks, limited to what is actually selectable here.
-  const topLevel = getTopLevelModels().filter(
+  // The admin's top-level picks for this visibility, limited to what is
+  // actually selectable here.
+  const topLevel = getTopLevelModels(visibility).filter(
     (t) => models.some((m) => m.id === t.id),
   );
 

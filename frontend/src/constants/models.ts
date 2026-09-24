@@ -18,11 +18,14 @@ export interface ModelInfo {
   /**
    * Admin Model Selection (Settings > Model Selection, persisted server-side
    * in data/model_selection.json and delivered on every catalog entry of
-   * GET /app/api/config): the composer menu's top-level slot (null = only
-   * listed under "All models"), the label shown for a slotted model, and
-   * whether the model may be used in private / public-project conversations.
+   * GET /app/api/config): the composer menu's top-level slot for private
+   * and for public-project conversations (null = only listed under "All
+   * models"), the label shown for a slotted model, and whether the model
+   * may be used in private / public-project conversations (both true, and
+   * publicSlot null, while public projects are off server-wide).
    */
   slot: number | null;
+  publicSlot: number | null;
   descriptor: string;
   allowPrivate: boolean;
   allowPublic: boolean;
@@ -39,7 +42,7 @@ export type ModelVisibility = 'private' | 'public';
  * and replaces this list via setModelCatalog(); nothing else should read
  * BUILTIN_MODELS directly.
  */
-const UNSET_SELECTION = { slot: null, descriptor: '', allowPrivate: true, allowPublic: true };
+const UNSET_SELECTION = { slot: null, publicSlot: null, descriptor: '', allowPrivate: true, allowPublic: true };
 
 const BUILTIN_MODELS: ModelInfo[] = ([
   { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro', provider: 'gemini', providerLabel: 'Gemini on Vertex', maxInputTokens: 1_000_000, deprecated: true },
@@ -63,9 +66,9 @@ const BUILTIN_MODELS: ModelInfo[] = ([
   ...UNSET_SELECTION,
   // The server's absent-file defaults (DEFAULT_MODEL_SELECTION in
   // config/model_selection.py), so the pre-config paint matches.
-  ...(m.id === 'claude-opus-4-8' ? { slot: 1, descriptor: 'Smart ($$$)' }
-    : m.id === 'claude-sonnet-5' ? { slot: 2, descriptor: 'Faster ($$)' }
-    : m.id === 'gemini-3.8-flash' ? { slot: 3, descriptor: 'Fastest ($)' }
+  ...(m.id === 'claude-opus-4-8' ? { slot: 1, publicSlot: 1, descriptor: 'Smart ($$$)' }
+    : m.id === 'claude-sonnet-5' ? { slot: 2, publicSlot: 2, descriptor: 'Faster ($$)' }
+    : m.id === 'gemini-3.8-flash' ? { slot: 3, publicSlot: 3, descriptor: 'Fastest ($)' }
     : {}),
 }));
 
@@ -97,6 +100,7 @@ export function setModelCatalog(models: AppModelInfo[] | undefined | null): void
       maxInputTokens: m.max_input_tokens || 0,
       deprecated: m.deprecated === true,
       slot: typeof m.slot === 'number' ? m.slot : null,
+      publicSlot: typeof m.public_slot === 'number' ? m.public_slot : null,
       descriptor: typeof m.descriptor === 'string' ? m.descriptor : '',
       allowPrivate: m.allow_private !== false,
       allowPublic: m.allow_public !== false,
@@ -132,17 +136,23 @@ export function getSelectableModels(visibility: ModelVisibility = 'private'): Mo
   return catalog.filter((m) => !m.deprecated && isModelAllowedFor(m, visibility));
 }
 
+/** The slot field that shapes the menu for a conversation visibility. */
+export function slotFor(model: ModelInfo, visibility: ModelVisibility): number | null {
+  return visibility === 'public' ? model.publicSlot : model.slot;
+}
+
 /**
- * The admin's top-level composer menu picks (models with a slot), in slot
- * order. The menu shows each one's descriptor (or its name when the
- * descriptor is empty) with the model name as the sublabel; the full list
- * lives behind the "All models" submenu. Entries whose model is not
- * offerable in the current context are hidden by the menu, not disabled.
+ * The admin's top-level composer menu picks for a conversation visibility
+ * (models with a slot in that menu), in slot order. The menu shows each
+ * one's descriptor (or its name when the descriptor is empty) with the
+ * model name as the sublabel; the full list lives behind the "All models"
+ * submenu. Entries whose model is not offerable in the current context are
+ * hidden by the menu, not disabled.
  */
-export function getTopLevelModels(): ModelInfo[] {
+export function getTopLevelModels(visibility: ModelVisibility = 'private'): ModelInfo[] {
   return catalog
-    .filter((m) => !m.deprecated && m.slot !== null)
-    .sort((a, b) => (a.slot as number) - (b.slot as number));
+    .filter((m) => !m.deprecated && slotFor(m, visibility) !== null)
+    .sort((a, b) => (slotFor(a, visibility) as number) - (slotFor(b, visibility) as number));
 }
 
 /** Catalog entry for a model id, if known. */
