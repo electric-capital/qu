@@ -447,6 +447,17 @@ fields. To *read* a PDF's content for analysis, prefer `get_workspace_file`
 manipulation/generation. If a PDF is over the per-model attachment limit,
 split it into page chunks with `pypdf` first and read the chunks.
 
+**Document conversion (e.g. `.docx` -> PDF) does NOT belong in the sandbox.**
+There is no LibreOffice or Word in the container, and stitching a PDF
+together from `python-docx` output loses layout, fonts, images,
+headers/footers and tables. When Google Services is connected, convert with
+`tool_call(tool_name="google_convert_document", arguments={{"path": "report.docx", "format": "pdf"}})`
+(or `"file_id": "..."` for a document stored in Drive) -- it runs Google
+Docs' own converter and saves the result in the workspace; load
+`system:docs` for the details. Only convert in the sandbox when Google
+Services is not connected, and tell the user the output will be lower
+quality.
+
 - **run_python(script, args?, timeout?)** — pass inline Python source as a
   string. Nothing is written to the workspace. Use this for one-off,
   throwaway tasks: analysing an uploaded file, quick data processing,
@@ -893,8 +904,8 @@ _register(SystemSkill(
 _register(SystemSkill(
     id="system:docs",
     name="Google Docs",
-    description="Read Docs via authed_get; list via Drive mimeType filter; export to workspace (pdf/docx/md/...) via google_export_doc.",
-    when_to_load="Load when the user asks to read, list, or export/download Google Docs.",
+    description="Read/list/export Google Docs; convert Word/ODT/RTF/HTML/md files to PDF etc. via google_convert_document.",
+    when_to_load="Load when the user asks to read, list, or export Google Docs, or to convert a Word/ODT/RTF/HTML/text/Markdown document to PDF or another format.",
     requires="google_services",
     content_builder=lambda base_url, _api_key: docs_api.get_instructions(base_url),
 ))

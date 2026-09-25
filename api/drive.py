@@ -118,6 +118,7 @@ tool_call(tool_name="get_workspace_file", arguments={{"path": "report.pdf"}})
 - To access shared drive files, use `includeItemsFromAllDrives=true` and `supportsAllDrives=true`
 - Use the `fields` parameter to request only the data you need, which reduces response size and saves tokens. Example: `fields=files(id,name,mimeType)` for file listings.
 - For file **metadata** (name, size, mimeType, etc.), use `authed_get`. For file **content** (the actual bytes), use `download_drive_file` as shown above.
+- **Converting a Drive document (e.g. a `.docx` to PDF):** do NOT download it and convert in the sandbox -- the sandbox has no LibreOffice and code-based conversions come out subpar. Use `tool_call(tool_name="google_convert_document", arguments={{"file_id": "YOUR_FILE_ID", "format": "pdf"}})`, which runs Google Docs' own converter and saves the result in the workspace (load `system:docs` for details). Native Google Docs use `google_export_doc` instead.
 
 ---
 

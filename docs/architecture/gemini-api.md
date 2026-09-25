@@ -14,6 +14,7 @@ Many tools are dispatched through the `tool_call` meta tool pattern (see [Meta T
 - `find_slack_channel`
 - `download_drive_file` (Drive binary content downloads to workspace)
 - `google_export_doc` (native Google Doc -> workspace file in any Docs export format via Drive `files.export`; see [Docs API](../api/docs-api.md))
+- `google_convert_document` (Word/ODT/RTF/HTML/text/Markdown file from the workspace or Drive -> any Docs export format through Google Docs' converter via a temporary Doc; preferred over sandbox conversion -- see [Docs API](../api/docs-api.md#converting-regular-documents-with-google-docs-via-google_convert_document))
 - `archive_gmail_message` (Gmail message archiving with `[Quest]/archived` label)
 - the Gmail Simple tools (`get_gmail_messages`, `list_gmail_labels`, `get_gmail_message_urls`, `create_gmail_draft`, `send_gmail_to_self` -- wrapping the `/api/gmail-simple/*` endpoint handlers, which stay registered as HTTP routes for sandboxed scripts; see [Gmail API Documentation](../api/gmail-api.md))
 - the Slack read tools (`list_slack_teams`, `list_slack_conversations`, `get_slack_conversation_history`, `get_slack_conversation_replies`, `search_slack_messages`, `get_slack_user_info`, `list_slack_users` -- plugin-registered by the in-tree Slack plugin, wrapping the endpoint functions in `plugins/slack/upstream.py`):
@@ -49,7 +50,7 @@ Tool declarations are defined in a provider-agnostic JSON Schema format in `chat
 
 `list_routines` is the analogous read-only inspection of the current project's routines (name, prompt, model, schedule, auto-loaded skills; structured error outside project conversations), whose write path rides on `create_action_request(request_type="edit_routine")`; see [Routines Architecture -- Agent Tools](routines.md#agent-tools).
 
-**Dynamic tools (dispatched via `tool_call`):** 23 core tools defined in `TOOL_CALL_REGISTRY` in `chat/llm/tool_schemas.py`, invoked by the LLM through `tool_call(tool_name="...", arguments={...})`: `get_current_time`, `list_workspace_files`, `get_workspace_file`, `write_workspace_file`, `edit_workspace_file`, `memory_search`, `memory_list`, `wait_for_handles`, `authed_get`, `authed_post`, `get_response_content`, `download_drive_file`, `google_export_doc`, `archive_gmail_message`, `list_gmail_quest_labels`, `modify_gmail_labels`, `get_gmail_messages`, `list_gmail_labels`, `get_gmail_message_urls`, `create_gmail_draft`, `send_gmail_to_self`, `set_conversation_name`, `project_db_query`.
+**Dynamic tools (dispatched via `tool_call`):** 24 core tools defined in `TOOL_CALL_REGISTRY` in `chat/llm/tool_schemas.py`, invoked by the LLM through `tool_call(tool_name="...", arguments={...})`: `get_current_time`, `list_workspace_files`, `get_workspace_file`, `write_workspace_file`, `edit_workspace_file`, `memory_search`, `memory_list`, `wait_for_handles`, `authed_get`, `authed_post`, `get_response_content`, `download_drive_file`, `google_export_doc`, `google_convert_document`, `archive_gmail_message`, `list_gmail_quest_labels`, `modify_gmail_labels`, `get_gmail_messages`, `list_gmail_labels`, `get_gmail_message_urls`, `create_gmail_draft`, `send_gmail_to_self`, `set_conversation_name`, `project_db_query`.
 
 See [Gmail API Documentation](../api/gmail-api.md) for the Gmail Simple tools (which wrap the `/api/gmail-simple/*` endpoint handlers kept registered for sandboxed scripts) and the Quest-managed label tools.
 
@@ -446,6 +447,7 @@ The public function is a thin guard around `_dispatch_tool_call_inner()`: any un
    - The `get_workspace_file` dispatch branch returns `(result, extra_parts)` for the tuple unpacking pattern
    - The `download_drive_file` branch calls `_handle_download_drive_file()` from `chat/gemini_api/tool_handlers/drive.py` to download Drive file content to the workspace
    - The `google_export_doc` branch calls `_handle_google_export_doc()` from the same module to export a native Google Doc to the workspace in a chosen format
+   - The `google_convert_document` branch calls `_handle_google_convert_document()` from the same module to convert a Word/ODT/RTF/HTML/text/Markdown file (workspace `path` or Drive `file_id`) through a temporary Google Doc into a chosen format
    - The `archive_gmail_message` branch calls `_handle_archive_gmail_message()` from `chat/gemini_api/tool_handlers/gmail_labels.py` to archive a Gmail message
    - The `set_conversation_name` branch calls `_handle_set_conversation_name()` from `chat/gemini_api/tool_handlers/misc.py` to set a custom display name on the conversation
    - The `authed_get` branch calls `handle_authed_get()` from `chat/gemini_api/authed_get.py` for authenticated external API requests, passing `force_large_response`, `output_file`, and `conversation_id` for large response protection (see [Large Response Protection](#large-response-protection))

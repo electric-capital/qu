@@ -12,6 +12,11 @@ Exporting a Doc to a file (PDF, DOCX, Markdown, ...) uses the
 ``google_export_doc`` tool call (``_handle_google_export_doc`` in
 ``chat/gemini_api/tool_handlers/drive.py``), which drives the Drive
 ``files.export`` endpoint and writes the result to the workspace.
+
+Converting a regular document (a ``.docx`` on Drive or in the workspace)
+with Google Docs' converter uses the ``google_convert_document`` tool call
+(``_handle_google_convert_document`` in the same module): import as a
+temporary Google Doc, export, delete the temporary Doc.
 """
 
 DOCS_API_BASE = "https://docs.googleapis.com/v1"
@@ -114,6 +119,32 @@ tool_call(tool_name="google_export_doc", arguments={{"document_id": "DOCUMENT_ID
 - The tool only exports native Google Docs (`mimeType = application/vnd.google-apps.document`). Regular files (uploaded PDFs, Word files, ...) go through `download_drive_file`; Sheets and Slides are not supported by this tool.
 - Google caps exports at 10 MB of exported content; very large documents may fail in heavy formats and need `txt` / `md`.
 - Do NOT call `/drive/v3/files/{{id}}/export` through `authed_get` -- the tool call path rejects it and points you back here.
+
+**Converting Word / ODT / RTF / HTML / text / Markdown documents with Google Docs' converter (via google_convert_document):**
+
+When the user wants a PDF (or docx / odt / rtf / txt / md / html / epub / zip) made from a regular document -- a `.docx` stored in Google Drive, a Word file uploaded to the workspace, an `.odt` / `.rtf` / `.html` / `.txt` / `.md` file -- **use `google_convert_document`, NOT a conversion inside `run_python` / `run_script`.** The sandbox has no LibreOffice or Word: building a PDF from `python-docx` output loses layout, fonts, images, headers/footers and tables, and users have reported the results as subpar. `google_convert_document` produces the same output as File > Download in Google Docs. Under the hood it imports the file as a temporary Google Doc (Drive converts on import), exports it in the requested format, writes the result to the workspace, and deletes the temporary Doc again -- nothing is left in the user's Drive, and no approval card is needed.
+
+Pass exactly one source: `path` (workspace file) or `file_id` (regular Drive file). Supported source types: `.docx`, `.doc`, `.odt`, `.rtf`, `.txt`, `.html` / `.htm`, `.md`. Target `format` values are the same nine as `google_export_doc`.
+
+```
+# A Word document stored in Google Drive -> PDF (no download step needed; the
+# Drive file id is enough)
+tool_call(tool_name="google_convert_document", arguments={{"file_id": "DRIVE_FILE_ID", "format": "pdf"}})
+
+# A Word document the user uploaded to the workspace -> PDF
+tool_call(tool_name="google_convert_document", arguments={{"path": "Q3 Report.docx", "format": "pdf"}})
+
+# Markdown you wrote to the workspace -> a nicely typeset PDF for the user
+tool_call(tool_name="google_convert_document", arguments={{"path": "summary.md", "format": "pdf", "filename": "Summary.pdf"}})
+
+# .doc / .odt / .rtf -> .docx
+tool_call(tool_name="google_convert_document", arguments={{"path": "legacy.doc", "format": "docx"}})
+```
+
+- The result lands in the workspace (default name: source name with the new extension, e.g. `Q3 Report.pdf`). The user downloads it from the file browser; attach it elsewhere via `upload_to_drive`, `create_gmail_draft`, `send_slack_dm_to_self`, etc.
+- Native Google Docs are already Docs -- export them with `google_export_doc` (the tool tells you so if you pass a Doc's id). Google Sheets / Slides are not supported.
+- Limits: sources up to 50 MB (Google's conversion cap); exports up to 10 MB of exported content. Conversion fidelity is Google Docs' -- complex Word features Docs itself doesn't support (macros, some advanced layout) are simplified the same way opening the file in Docs would.
+- Only fall back to converting in the sandbox when Google Services is not connected (the tool returns a `google_services_auth_required` error) -- and say so to the user, since the sandbox output will be lower quality.
 
 **Important Notes:**
 - Document IDs can be found in Google Docs URLs (e.g., `https://docs.google.com/document/d/DOCUMENT_ID/edit`)

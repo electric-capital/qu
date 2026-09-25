@@ -34,6 +34,7 @@ from chat.gemini_api.tool_handlers import (
     _handle_edit_workspace_file,
     _handle_download_drive_file,
     _handle_google_export_doc,
+    _handle_google_convert_document,
     _handle_archive_gmail_message,
     _handle_list_gmail_quest_labels,
     _handle_modify_gmail_labels,
@@ -223,6 +224,14 @@ async def _tool_google_export_doc(ctx: ToolContext, args: dict) -> str:
     return await _handle_google_export_doc(
         ctx.user, ctx.conversation_id, args.get("document_id", ""),
         args.get("format", ""),
+        filename=args.get("filename"), project_id=ctx.project_id,
+    )
+
+
+async def _tool_google_convert_document(ctx: ToolContext, args: dict) -> str:
+    return await _handle_google_convert_document(
+        ctx.user, ctx.conversation_id, args.get("format", ""),
+        path=args.get("path"), file_id=args.get("file_id"),
         filename=args.get("filename"), project_id=ctx.project_id,
     )
 
@@ -417,6 +426,7 @@ TOOL_CALL_HANDLERS: dict[str, ToolHandler] = {
     "wait_for_handles": _tool_wait_for_handles_stub,
     "download_drive_file": _tool_download_drive_file,
     "google_export_doc": _tool_google_export_doc,
+    "google_convert_document": _tool_google_convert_document,
     "archive_gmail_message": _tool_archive_gmail_message,
     "list_gmail_quest_labels": _tool_list_gmail_quest_labels,
     "modify_gmail_labels": _tool_modify_gmail_labels,

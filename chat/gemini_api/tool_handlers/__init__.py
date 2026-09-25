@@ -29,9 +29,12 @@ from chat.gemini_api.tool_handlers.workspace import (
 )
 from chat.gemini_api.tool_handlers.drive import (
     GOOGLE_DOC_EXPORT_FORMATS,
+    GOOGLE_DOC_IMPORT_FORMATS,
     _resolve_doc_export_format,
+    _resolve_doc_import_mime,
     _handle_download_drive_file,
     _handle_google_export_doc,
+    _handle_google_convert_document,
 )
 from chat.gemini_api.tool_handlers.gmail_labels import (
     _handle_archive_gmail_message,
@@ -82,9 +85,12 @@ __all__ = [
     "_handle_write_workspace_file",
     "_handle_edit_workspace_file",
     "GOOGLE_DOC_EXPORT_FORMATS",
+    "GOOGLE_DOC_IMPORT_FORMATS",
     "_resolve_doc_export_format",
+    "_resolve_doc_import_mime",
     "_handle_download_drive_file",
     "_handle_google_export_doc",
+    "_handle_google_convert_document",
     "_handle_archive_gmail_message",
     "_handle_list_gmail_quest_labels",
     "_handle_modify_gmail_labels",

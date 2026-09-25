@@ -1,6 +1,6 @@
 # Docs API Documentation
 
-This document describes how Quest accesses Google Docs content for reading documents and exports Docs into the conversation workspace as files.
+This document describes how Quest accesses Google Docs content for reading documents, exports Docs into the conversation workspace as files, and converts regular documents (Word, ODT, RTF, HTML, text, Markdown) with Google Docs' own converter.
 
 ## Overview
 
@@ -42,7 +42,33 @@ Native Google Docs carry no downloadable bytes -- `alt=media` on `files/{id}` fa
 
 **Not allow-listed for public projects or the script bridge:** like `download_drive_file`, the tool stays out of `PUBLIC_TOOL_CALL_ALLOWLIST` and `SCRIPT_TOOL_CALL_ALLOWLIST`.
 
+## Converting Regular Documents with Google Docs (via `google_convert_document`)
+
+`google_export_doc` only accepts native Google Docs, so a `.docx` stored in Drive (or uploaded to the workspace) used to be downloaded and then converted to PDF inside the script sandbox. The sandbox image has no LibreOffice or Word, only `python-docx` and `pypdf`, and users reported the resulting PDFs as subpar. `google_convert_document` routes such conversions through Google Docs' own converter instead, producing the same output as File > Download in Google Docs.
+
+**Implementation:** `_handle_google_convert_document()` in `chat/gemini_api/tool_handlers/drive.py`, dispatched via `tool_call` from `TOOL_CALL_HANDLERS`; schema in `TOOL_CALL_REGISTRY`. Parameters: `format` (required, the same nine targets as `google_export_doc`), exactly one of `path` (workspace file) / `file_id` (regular Drive file), optional `filename`.
+
+**Flow:**
+
+1. Resolve `format` (same resolver as `google_export_doc`); reject unless exactly one source is given; reject with a reconnect hint when the stored Google connection has scopes but lacks `drive.file` (the temporary Doc is created under that scope).
+2. Get the source bytes. Drive source: `files/{id}?fields=name,mimeType,size` via `_make_authed_request()` -- a native Google Doc is refused with a pointer to `google_export_doc`, other Workspace types are unsupported, a non-importable type (e.g. a PDF) is refused with a pointer to `download_drive_file`, an over-cap declared `size` short-circuits before the download -- then `alt=media`. Workspace source: containment-checked path under the conversation/project workspace, must be a regular file. The import MIME type comes from `_resolve_doc_import_mime()`: file extension first (`GOOGLE_DOC_IMPORT_FORMATS`: `doc`, `docx`, `odt`, `rtf`, `txt`, `html`/`htm`, `md`), Drive-reported mimeType as fallback. Empty sources and sources over `GOOGLE_DOC_IMPORT_MAX_BYTES` (50 MB, Google's conversion cap) are refused.
+3. `_import_as_google_doc()`: multipart `POST upload/drive/v3/files?uploadType=multipart` via `make_authenticated_request()` with metadata `{"name": "[Quest temp] <stem>", "mimeType": application/vnd.google-apps.document}` and the source bytes under the import MIME type, so Drive converts on import (the same call shape as the file browser's Save to Drive). Scope/permission 401/403s map to the shared Drive reauth message; the Drive upload host is not in the `authed_get` allow-list, hence the direct call.
+4. `GET files/{temp id}/export?mimeType=<target>` via `_make_authed_request()` (the existing allow-listed export path), wrapped in `try/finally` so `_delete_drive_file()` (`DELETE files/{temp id}`, 200/204/404 = gone) always runs -- also when the export raises.
+5. Write the bytes to `<workspace>/<filename>` (default `<source stem><ext>`, sanitized + traversal-checked), `_publish_file_list_changed()`. The receipt carries `filename`, `size_bytes`, `format`, `export_mime_type`, `content_type`, `source` (`path` or `file_id` + `name` + `import_mime_type`), `temporary_google_doc` (`id`, `deleted`) and a `message`; when the delete failed a `warning` names the leftover Doc's URL so the model tells the user. An export failure returns `error` + the 10 MB hint plus the same temp-Doc fields.
+
+**Classification:** not `mutating` -- on success nothing outside the workspace changes (the temp Doc exists only for the duration of the call), so one-shot inference API runs may use it; pinned in `tests/test_inference_api.py`. Not in `PUBLIC_TOOL_CALL_ALLOWLIST` or `SCRIPT_TOOL_CALL_ALLOWLIST`, like the other Drive tools.
+
+**Model steering:** the tool description, the `system:docs` skill (`api/docs.py`), the `system:drive` download notes (`api/drive.py`), the `system:workspace` sandbox notes (`chat/system_skills/catalog.py`) and both the top-level and sub-agent system prompts (`chat/gemini_api/system_prompt.py`) tell the model to prefer `google_convert_document` over any conversion inside `run_python` / `run_script`, and to fall back to the sandbox only when Google Services is not connected (saying so to the user). `google_export_doc`'s non-Doc rejection now points at `google_convert_document` when the file is an importable document, and at `download_drive_file` otherwise.
+
+**Scopes:** works with the existing `drive.readonly` + `drive.file` grant, no re-consent. `files.copy` with on-copy conversion would avoid the download/upload round trip, but it is not authorized by `drive.readonly` and under `drive.file` the source must be app-created, so the import route is the one that works for arbitrary user files.
+
 ## Design Decisions
+
+**Why import + export + delete instead of converting in the sandbox?**
+Fidelity. Google's converter handles layout, fonts, images, headers/footers, tables and page breaks the way Docs renders them; the sandbox has no office suite and code-based conversion cannot match that. The temporary Doc is the price of using Google's converter on a file that is not already a Doc.
+
+**Why no approval card for the temporary Drive write?**
+The write is transient and self-reverting: the Doc is app-owned, named `[Quest temp] ...`, and deleted in the same call (also on export failure or exception). A leftover only happens when the delete itself fails, which the receipt surfaces as a warning. An approval round trip for every conversion would push the model back to the sandbox path this tool exists to replace.
 
 **Why a dedicated `google_export_doc` tool instead of reusing `download_drive_file` with a format parameter?**
 `download_drive_file` is a byte-for-byte fetch (`alt=media`) whose contract is "the file as stored"; export is a conversion with a format choice, a different endpoint, a Docs-only precondition, and different failure modes (the 10 MB cap). Keeping them separate keeps each tool's description short and unambiguous for the model, and the mimeType pre-check gives a precise cross-pointer in each direction.

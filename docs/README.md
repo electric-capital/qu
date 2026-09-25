@@ -78,7 +78,7 @@ Conversations created by routines are linked back via `routine_id` and grouped u
 - [Inference API](api/inference-api.md) - One-shot non-streaming inference endpoint (`POST /api/inference`) for internal applications, authenticated by named per-user bearer tokens from Settings > Inference API; runs a single prompt headlessly as the user and returns the final markdown captured via the `return_final_response` tool
 - [Gmail API](api/gmail-api.md) - Gmail Simple dynamic tools (`get_gmail_messages`, `list_gmail_labels`, `get_gmail_message_urls`, `create_gmail_draft`, `send_gmail_to_self`; HTTP `/api/gmail-simple/*` endpoints kept for sandboxed scripts) and Gmail Raw API access via `authed_get` (read messages with attachment metadata, automatic email cleanup and URL replacement for token reduction, URL lookup, fetch raw attachments, create drafts with drive/workspace/gmail attachment and markdown body support, forward draft workflow, send emails to self, archive messages with `[Quest]/archived` label via `archive_gmail_message` dynamic tool)
 - [Drive API](api/drive-api.md) - Google Drive access via `authed_get` (metadata reads), `download_drive_file` tool (binary content downloads), Save to Drive from the file browser (markdown to Google Docs conversion), and the `upload_to_drive` / `create_drive_folder` action requests (raw-bytes workspace-file uploads and folder creation, with on-the-fly destination-folder creation on upload)
-- [Docs API](api/docs-api.md) - Google Docs access via `authed_get` (document reads) and Drive API (document listing), plus `google_export_doc` (export a Doc to the workspace as pdf/docx/odt/rtf/txt/md/html/epub/zip)
+- [Docs API](api/docs-api.md) - Google Docs access via `authed_get` (document reads) and Drive API (document listing), plus `google_export_doc` (export a Doc to the workspace as pdf/docx/odt/rtf/txt/md/html/epub/zip) and `google_convert_document` (convert a Word/ODT/RTF/HTML/text/Markdown file from the workspace or Drive to any of those formats with Google Docs' converter via a temporary Doc -- preferred over sandbox conversion)
 - [Sheets API](api/sheets-api.md) - Google Sheets access via `authed_get` (spreadsheet reads) and Drive API (spreadsheet listing)
 - [Calendar API](api/calendar-api.md) - Google Calendar access via `authed_get` (reads) and the `create_calendar_invite` / `edit_calendar_event` action requests (writes), includes cross-org calendar visibility
 - [Tasks API](api/tasks-api.md) - Google Tasks access via `authed_get` (read-only task lists and tasks)
@@ -327,7 +327,7 @@ quest/
 │   │   │   ├── _common.py       # Shared workspace helpers: _get_workspace_dir, _publish_file_list_changed, _parse_content_disposition_filename, _sanitize_workspace_filename
 │   │   │   ├── misc.py          # get_current_time, set_conversation_name
 │   │   │   ├── workspace.py     # list/get/write/edit_workspace_file, load_gmail_attachment
-│   │   │   ├── drive.py         # download_drive_file, google_export_doc
+│   │   │   ├── drive.py         # download_drive_file, google_export_doc, google_convert_document
 │   │   │   ├── gmail_labels.py  # archive_gmail_message, list_gmail_quest_labels, modify_gmail_labels
 │   │   │   ├── gmail_simple.py  # Gmail Simple tools wrapping api/gmail endpoint functions
 │   │   │   ├── memory.py        # memory_search, memory_list

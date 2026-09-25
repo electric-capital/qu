@@ -490,6 +490,68 @@ TOOL_CALL_REGISTRY: dict[str, ToolSpec] = {
             "required": ["document_id", "format"],
         },
     },
+    "google_convert_document": {
+        "name": "google_convert_document",
+        "description": (
+            "Convert a Word (.docx/.doc), OpenDocument (.odt), RTF, HTML, plain-text "
+            "or Markdown document to pdf, docx, odt, rtf, txt, md, html, epub or zip "
+            "using Google Docs' own converter, and save the result in the "
+            "conversation workspace. The source is either a workspace file (path) "
+            "or a regular Google Drive file (file_id) -- pass exactly one. PREFER "
+            "this over converting documents inside run_python / run_script: the "
+            "sandbox has no LibreOffice or Word, so code-based conversions (e.g. "
+            "python-docx to PDF) lose layout, fonts, images, headers/footers and "
+            "tables, while this gives the same output as File > Download in Google "
+            "Docs. Implementation: the file is imported as a temporary Google Doc, "
+            "exported, and the temporary Doc is deleted again -- nothing stays in "
+            "Drive. Native Google Docs go through google_export_doc instead. "
+            "Requires Google Services to be connected."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "format": {
+                    "type": "string",
+                    "enum": ["pdf", "docx", "odt", "rtf", "txt", "md", "html", "epub", "zip"],
+                    "description": (
+                        "Target format. One of: pdf, docx (Word), odt (OpenDocument), "
+                        "rtf, txt (plain text), md (Markdown), html, epub, zip (zipped HTML)."
+                    ),
+                },
+                "path": {
+                    "type": "string",
+                    "description": (
+                        "Workspace-relative path of the source document (.docx, .doc, "
+                        ".odt, .rtf, .txt, .html, .htm, .md). Use this OR file_id."
+                    ),
+                },
+                "file_id": {
+                    "type": "string",
+                    "description": (
+                        "Google Drive file id of the source document (a regular file "
+                        "such as an uploaded .docx, from a Drive URL or the files list "
+                        "endpoint). Use this OR path."
+                    ),
+                },
+                "filename": {
+                    "type": "string",
+                    "description": (
+                        "Optional filename to save the result as in the workspace. "
+                        "If not provided, the source name with the target extension "
+                        "is used (e.g. 'Q3 Report.docx' -> 'Q3 Report.pdf')."
+                    ),
+                },
+                "intent_message": {
+                    "type": "string",
+                    "description": (
+                        "A brief, user-friendly summary of your intent "
+                        "(max 50 characters). Example: 'Convert Word doc to PDF'."
+                    ),
+                },
+            },
+            "required": ["format"],
+        },
+    },
     "archive_gmail_message": {
         "name": "archive_gmail_message",
         "mutating": True,

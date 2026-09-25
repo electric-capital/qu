@@ -368,6 +368,9 @@ _CORE_READ_OR_WORKSPACE_TOOLS = {
     "memory_search", "memory_list",
     "wait_for_handles",
     "download_drive_file", "google_export_doc",  # external read -> workspace
+    # Google Docs conversion: the temporary Drive Doc is deleted in the same
+    # call, so nothing outside the workspace changes on success.
+    "google_convert_document",
     "list_gmail_quest_labels", "get_gmail_messages", "list_gmail_labels",
     "get_gmail_message_urls",
     "set_conversation_name",  # the run's own row
