@@ -985,6 +985,65 @@
   }
 }
 
+/* Starting: the microphone was requested but real audio is not flowing yet
+   (permission prompt, device open, Bluetooth headsets switching to their
+   call profile). Amber and breathing so it reads as "wait", not "talk". */
+.composer-icon-btn.composer-mic.starting,
+.composer-icon-btn.composer-mic.starting:disabled {
+  color: #1a1a1a;
+  background-color: #f0ad4e;
+  opacity: 1;
+  cursor: progress;
+  animation: composerMicBreathe 0.9s ease-in-out infinite alternate;
+}
+
+@keyframes composerMicBreathe {
+  from {
+    opacity: 0.55;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Input level meter beside the mic while recording: four bars driven by the
+   --mic-level custom property (0..1) the hook updates a few times a second,
+   so the user can see they are being heard. */
+.composer-mic-level {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 14px;
+  --mic-level: 0;
+}
+
+.composer-mic-level i {
+  display: block;
+  width: 3px;
+  height: 100%;
+  border-radius: 1.5px;
+  background-color: rgba(255, 255, 255, 0.18);
+  position: relative;
+  overflow: hidden;
+}
+
+.composer-mic-level i::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: clamp(0%, calc((var(--mic-level) - var(--bar-floor)) / var(--bar-span) * 100%), 100%);
+  background-color: #ff6b6b;
+  transition: height 80ms linear;
+}
+
+/* Each bar covers the next quarter of the range, left to right. */
+.composer-mic-level i:nth-child(1) { --bar-floor: 0; --bar-span: 0.25; }
+.composer-mic-level i:nth-child(2) { --bar-floor: 0.25; --bar-span: 0.25; }
+.composer-mic-level i:nth-child(3) { --bar-floor: 0.5; --bar-span: 0.25; }
+.composer-mic-level i:nth-child(4) { --bar-floor: 0.75; --bar-span: 0.25; }
+
 /* Elapsed time beside the mic while recording. */
 .composer-mic-timer {
   font-size: 0.75rem;
@@ -994,7 +1053,9 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .composer-icon-btn.composer-mic.recording {
+  .composer-icon-btn.composer-mic.recording,
+  .composer-icon-btn.composer-mic.starting,
+  .composer-icon-btn.composer-mic.starting:disabled {
     animation: none;
   }
 }
@@ -1070,6 +1131,10 @@
 
   .composer-mic-timer {
     color: rgba(0, 0, 0, 0.55);
+  }
+
+  .composer-mic-level i {
+    background-color: rgba(0, 0, 0, 0.12);
   }
 
   .composer-no-models {
