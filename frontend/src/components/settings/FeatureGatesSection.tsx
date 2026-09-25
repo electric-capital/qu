@@ -225,12 +225,23 @@ export function FeatureGatesSection() {
               </span>
             </div>
             <p className="settings-description">{gate.description}</p>
+            {/* A feature the server cannot run yet (e.g. voice input with
+                no Gemini Vertex model) cannot be turned on; turning an
+                already-enabled gate off is always allowed. */}
+            {!gate.available && gate.unavailable_reason && (
+              <p className="feature-gate-unavailable" role="note">
+                {gate.unavailable_reason}
+              </p>
+            )}
             <label className="svc-cred-toggle">
               <input
                 type="checkbox"
                 className="svc-cred-toggle-input"
                 checked={gate.enabled}
-                disabled={savingFeature === gate.feature}
+                disabled={
+                  savingFeature === gate.feature
+                  || (!gate.available && !gate.enabled)
+                }
                 onChange={(e) =>
                   saveGate(gate.feature, { enabled: e.target.checked })
                 }

@@ -64,16 +64,36 @@ FEATURE_PUBLIC_PROJECTS = "public_projects"
 # only for the people who have not migrated yet.
 FEATURE_GUIDES = "guides"
 
+# Voice input (see docs/architecture/voice-input.md): a microphone button in
+# the chat composer records a short clip in the browser and POSTs it to
+# ``/app/api/transcribe``, which transcribes it server-side with a Gemini
+# model on Vertex AI and hands the text back for the user to edit and send.
+# Nothing leaves the deployment's own Vertex project. The admin endpoint
+# refuses to turn the gate on while no Gemini Vertex model is configured
+# (chat/transcription.py ``transcription_availability()``), and the
+# transcribe route re-checks availability per request. Access can be
+# restricted to specific users (PER_USER_ACCESS_FEATURES).
+FEATURE_VOICE_INPUT = "voice_input"
+
 # All admin-gateable features. Extend this tuple (and FEATURE_LABELS) when a
 # new optional feature gets a gate. Every feature is off until an admin
 # enables it.
-KNOWN_FEATURES = (FEATURE_USER_SUBAGENTS, FEATURE_PUBLIC_PROJECTS, FEATURE_GUIDES)
+KNOWN_FEATURES = (
+    FEATURE_USER_SUBAGENTS,
+    FEATURE_PUBLIC_PROJECTS,
+    FEATURE_GUIDES,
+    FEATURE_VOICE_INPUT,
+)
 
 # Features whose gate can be narrowed to specific users via
 # ``allowed_users``. user_subagents deliberately stays all-or-nothing: a
 # run involves two users (caller and target) and a per-user list would be
 # ambiguous about which side it restricts.
-PER_USER_ACCESS_FEATURES = frozenset({FEATURE_PUBLIC_PROJECTS, FEATURE_GUIDES})
+PER_USER_ACCESS_FEATURES = frozenset({
+    FEATURE_PUBLIC_PROJECTS,
+    FEATURE_GUIDES,
+    FEATURE_VOICE_INPUT,
+})
 
 # Human text for the admin Settings > Features section, keyed by feature.
 FEATURE_LABELS: dict[str, dict[str, str]] = {
@@ -106,6 +126,18 @@ FEATURE_LABELS: dict[str, dict[str, str]] = {
             "but never applied to conversations, and routines cannot be "
             "given a guide override. Access can be granted to all users or "
             "only to specific users."
+        ),
+    },
+    FEATURE_VOICE_INPUT: {
+        "label": "Voice input",
+        "description": (
+            "Adds a microphone button to the chat composer. Recordings are "
+            "transcribed server-side by a Gemini model on this server's "
+            "Vertex AI project (audio never goes to a third-party speech "
+            "service and is not stored) and the text is placed in the "
+            "composer for the user to edit before sending. Requires a "
+            "configured Gemini Vertex model. Access can be granted to all "
+            "users or only to specific users."
         ),
     },
 }

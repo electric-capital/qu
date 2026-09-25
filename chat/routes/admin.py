@@ -777,11 +777,31 @@ class FeatureGateUpdate(BaseModel):
     allowed_users: Optional[list[str]] = None
 
 
+def _feature_availability(feature: str) -> tuple[bool, Optional[str]]:
+    """Whether ``feature`` can be turned on here: ``(available, reason)``.
+
+    Most gates are pure switches and are always available. A gate whose
+    feature depends on server configuration (voice input needs a Gemini
+    Vertex model) reports False with a human reason while that
+    configuration is missing; the PUT endpoint then refuses to enable it
+    and the Settings toggle shows the reason. Turning a gate OFF is always
+    allowed.
+    """
+    from config.feature_gates import FEATURE_VOICE_INPUT
+
+    if feature == FEATURE_VOICE_INPUT:
+        from chat.transcription import transcription_availability
+
+        return transcription_availability()
+    return True, None
+
+
 def _feature_gate_view(feature: str, gates: dict[str, dict]) -> dict:
     from config.feature_gates import FEATURE_LABELS, PER_USER_ACCESS_FEATURES
 
     labels = FEATURE_LABELS.get(feature, {})
     gate = gates.get(feature) or {"enabled": False, "allowed_users": None}
+    available, unavailable_reason = _feature_availability(feature)
     return {
         "feature": feature,
         "label": labels.get("label", feature),
@@ -790,6 +810,10 @@ def _feature_gate_view(feature: str, gates: dict[str, dict]) -> dict:
         # None = every user has access while the gate is on.
         "allowed_users": gate["allowed_users"],
         "supports_user_access": feature in PER_USER_ACCESS_FEATURES,
+        # False = the server lacks something the feature needs; the gate
+        # cannot be turned on until it is fixed (reason says what).
+        "available": available,
+        "unavailable_reason": unavailable_reason,
     }
 
 
@@ -858,6 +882,13 @@ async def admin_update_feature_gate(
                     "error": "invalid_params",
                     "message": f"Not an email address: {bad[0]!r}",
                 },
+            )
+    if body.enabled:
+        available, reason = _feature_availability(feature)
+        if not available:
+            raise HTTPException(
+                status_code=400,
+                detail={"error": "feature_unavailable", "message": reason},
             )
     gates = set_feature_enabled(feature, body.enabled)
     if allowed_users_provided:
