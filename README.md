@@ -120,6 +120,15 @@ codebase.
 
 ## Quick Start
 
+Prefer to watch? This short video walks through installing Quest and connecting it to
+OpenRouter so you can start chatting:
+
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=BOB2CvK1DhY">
+    <img src="https://img.youtube.com/vi/BOB2CvK1DhY/maxresdefault.jpg" alt="How to quickly setup Quest with OpenRouter (YouTube)" width="640">
+  </a>
+</p>
+
 Setting up a new machine (Debian packages, Google OAuth, Vertex AI)? Follow the
 [Installation Guide](INSTALL.md).
 
