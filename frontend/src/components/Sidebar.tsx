@@ -1844,6 +1844,10 @@ export const Sidebar = React.memo(function Sidebar({ activeConversationId, onCon
         onClose={() => setSettingsRoutine(null)}
         onRoutineUpdated={handleRoutineUpdated}
         onRoutineDeleted={handleRoutineDeleted}
+        onOpenRunConversation={(conversationId) => {
+          setSettingsRoutine(null);
+          onConversationSelect(conversationId, drilledProjectId);
+        }}
       />
 
       <SearchModal

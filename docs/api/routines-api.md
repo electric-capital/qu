@@ -23,6 +23,27 @@ All routine endpoints are defined in `chat/routine_routes.py`. Request/response 
 - **GET `/app/api/projects/{project_id}/routines/{routine_id}`** -- Get a routine (`get_project_routine()`). Validates both project ownership and routine membership.
 - **PUT `/app/api/projects/{project_id}/routines/{routine_id}`** -- Update a routine (`update_project_routine()`). Uses `clear_guide`/`clear_model` boolean flags to distinguish "field absent" from "set to null" (JSON limitation). Setting a `guide_id` requires the `guides` feature gate to be open for the user (403 `guides_disabled` otherwise); `clear_guide` is always accepted. Translates to the ellipsis sentinel pattern used by `update_routine()` in `db/routine_store.py`. Accepts an optional `expected_updated_at` token for optimistic concurrency (see below).
 - **DELETE `/app/api/projects/{project_id}/routines/{routine_id}`** -- Delete a routine (`delete_project_routine()`).
+- **GET `/app/api/projects/{project_id}/routines/{routine_id}/costs`** -- Inference cost report for the routine (`get_project_routine_costs()`, backing the Costs section of `RoutineSettingsModal`). Same project-ownership and routine-membership checks as the single-routine GET (404 `not_found`). Delegates to `get_routine_cost_report()` in `chat/routine_costs.py`. Response:
+
+  ```json
+  {
+    "routine_id": "...",
+    "routine_created_at": "2026-01-01T00:00:00+00:00",
+    "generated_at": "...",
+    "windows": [
+      {"days": 7,  "current": {<bucket>}, "previous": {<bucket>}},
+      {"days": 28, "current": {<bucket>}, "previous": {<bucket>}}
+    ],
+    "lifetime": {<bucket>},
+    "recent_runs": [
+      {"conversation_id": "...", "title": "...", "started_at": "...",
+       "models": ["claude-opus-4-8"], "call_count": 3, "total_tokens": 12000,
+       "cost_usd": 0.42, "cost_source": "estimated"}
+    ]
+  }
+  ```
+
+  where `<bucket>` is `{"run_count", "call_count", "total_tokens", "cost_usd", "cost_source"}`. One run = one conversation the routine created (`conversations.routine_id`); a run's cost is that conversation's whole recorded usage from the raw `llm_calls_*` tables (sub-agent calls and every model included), and every figure buckets runs by the run's **start time** (`conversations.created_at`), not by call time: `current` covers runs started in `[now - days, now)`, `previous` the same-length period before it (the period-over-period base), `lifetime` every surviving run, `recent_runs` the newest 10. This differs from the admin Users report, which slices routine spend by call time. `cost_usd` follows the repo-wide null-on-unpriced convention (null when any run in the bucket used a model with no pricing entry and no provider-reported amount; a run with no recorded calls is a known `0`), with the usual `cost_source` provenance tag (`reported` / `estimated` / `mixed` / null -- see [Admin System Monitor API](admin-system-monitor-api.md)). Runs whose conversation was deleted are not included (the call rows survive but lose their routine link).
 
 ## Routine Auto-load Skill Endpoints
 

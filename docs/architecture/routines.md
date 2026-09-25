@@ -98,7 +98,7 @@ The form resets when the modal opens. On submit, it calls `createRoutine()` and 
 
 ### RoutineSettingsModal
 
-`frontend/src/components/RoutineSettingsModal.tsx` is a dedicated modal (720px wide) for editing an existing routine's settings and deleting it. It is rendered as a React portal and uses a left navigation sidebar with four sections: Prompt, Schedule, Skills, and Delete (with Delete pinned to the bottom of the nav as a danger item). The modal resets to the Prompt section each time it opens.
+`frontend/src/components/RoutineSettingsModal.tsx` is a dedicated modal (720px wide) for editing an existing routine's settings and deleting it. It is rendered as a React portal and uses a left navigation sidebar with five sections: Prompt, Schedule, Skills, Costs, and Delete (with Delete pinned to the bottom of the nav as a danger item). The modal resets to the Prompt section each time it opens.
 
 **Prompt section:**
 - Name input (max 100 characters)
@@ -113,6 +113,14 @@ The form resets when the modal opens. On submit, it calls `createRoutine()` and 
 
 **Skills section:**
 - Lists all skills the user has access to (own + shared + public, fetched via `fetchSkills()`) with a per-skill auto-load toggle for the routine. Auto-loaded skill IDs for the routine are fetched on section activation via `fetchRoutineAutoloadedSkillIds(projectId, routineId)` and toggled via `setRoutineSkillAutoload(projectId, routineId, skillId, enabled)`. Toggles persist immediately to the `routine_skill_autoloads` table -- there is no separate Save button. See [Skill Library Architecture](skill-library.md) for how routine auto-loads merge with user and project auto-loads at conversation time
+
+**Costs section** (`frontend/src/components/RoutineCostsSection.tsx`, read-only):
+- Fetched on section activation via `fetchRoutineCosts(projectId, routineId)` (`GET .../routines/{id}/costs`, see [Routines API](../api/routines-api.md)); the component is keyed on the routine id so each routine gets a fresh fetch
+- Two headline cards, "Last 7 days" and "Last 28 days": the window's cost, its run count, and a period-over-period delta against the preceding period of the same length (signed dollar change plus percentage, "no spend before" when the base period had none, "n/a" when either period contains an unpriced model); rising spend is tinted amber, falling spend green
+- A "Total since <routine created date>" line with the lifetime cost, run, call and token counts
+- A "Recent runs" table (newest 10): start time, model(s) used, tokens, cost. Rows are clickable and open the run's conversation (the Sidebar passes `onOpenRunConversation`, which closes the modal and selects the conversation inside the project)
+- Every cost figure carries the `~` estimate marker / provenance tooltip conventions of `ConversationUsageCell` (`formatCost` / `describeCostSource`), and an unknown (null) figure renders as an em dash with an explanatory tooltip
+- The report itself is assembled by `chat/routine_costs.py`: `list_routine_conversation_rows()` (db/conversation_store.py) supplies the runs, `get_usage_by_model_for_conversation_query()` (db/llm_call_store.py) aggregates their raw call rows through an `IN (subquery)` on `routine_conversation_ids_query()` so a long-running routine's id set never round-trips as a bind list, and the pure `build_cost_report()` buckets runs by start time (7d/28d current + previous, lifetime, recent runs). Design choice: attributing a run's whole cost to its start instant keeps the cards, the lifetime line and the table mutually consistent; the admin Users report slices by call time instead, so the two are different views rather than the same number
 
 **Delete section:**
 - Danger zone with delete confirmation dialog

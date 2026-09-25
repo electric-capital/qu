@@ -115,6 +115,9 @@ export const endpoints = {
   projectRoutine: (projectId: string, routineId: string) =>
     `${API_BASE_URL}/projects/${projectId}/routines/${routineId}`,
 
+  routineCosts: (projectId: string, routineId: string) =>
+    `${API_BASE_URL}/projects/${projectId}/routines/${routineId}/costs`,
+
   routineSkillsAutoloaded: (projectId: string, routineId: string) =>
     `${API_BASE_URL}/projects/${projectId}/routines/${routineId}/skills/autoloaded`,
 

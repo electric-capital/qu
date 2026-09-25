@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from chat.auth import get_current_user_cookie_or_apikey_checked
+from chat.routine_costs import get_routine_cost_report
 from config.feature_gates import guides_enabled_for
 from db.project_store import get_project
 from db.routine_store import (
@@ -196,6 +197,38 @@ async def get_project_routine(
         )
 
     return routine
+
+
+@router.get("/projects/{project_id}/routines/{routine_id}/costs")
+async def get_project_routine_costs(
+    project_id: str,
+    routine_id: str,
+    user: dict = Depends(get_current_user_cookie_or_apikey_checked),
+):
+    """Inference cost report for one routine (Routine Settings > Costs).
+
+    Rolling 7/28-day totals with the preceding period, the lifetime total
+    and the most recent runs; see chat/routine_costs.py for the attribution
+    model (per run, bucketed by run start) and the null-on-unpriced
+    convention.
+    """
+    user_id = user["id"]
+
+    project = await get_project(user_id, project_id)
+    if not project:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "not_found", "message": "Project not found"},
+        )
+
+    routine = await get_routine(user_id, routine_id)
+    if not routine or routine["project_id"] != project_id:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "not_found", "message": "Routine not found"},
+        )
+
+    return await get_routine_cost_report(routine)
 
 
 @router.put("/projects/{project_id}/routines/{routine_id}")

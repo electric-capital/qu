@@ -891,6 +891,55 @@ export interface VersionResponse {
 // model has neither reported amounts nor a pricing entry.
 export type AdminCostSource = 'reported' | 'estimated' | 'mixed';
 
+// --- Routine Settings > Costs (GET /projects/{id}/routines/{id}/costs) ---
+// One run = one conversation the routine created; a run's cost is that
+// conversation's whole recorded usage, and every figure buckets runs by
+// their START time (not per call), so the window totals, run counts and
+// the recent-runs table always agree. Costs follow the null-on-unpriced
+// convention: null when a run in the bucket used a model without pricing.
+
+export interface RoutineCostBucket {
+  run_count: number;
+  call_count: number;
+  total_tokens: number;
+  cost_usd: number | null;
+  cost_source: AdminCostSource | null;
+}
+
+export interface RoutineCostWindow {
+  days: number;
+  // Runs started in [now - days, now).
+  current: RoutineCostBucket;
+  // Runs started in [now - 2*days, now - days): the period-over-period base.
+  previous: RoutineCostBucket;
+}
+
+export interface RoutineCostRun {
+  conversation_id: string;
+  title: string;
+  started_at: string;
+  // Every model that made a call during the run, heaviest first; falls
+  // back to the conversation's model when the run recorded no calls.
+  models: string[];
+  call_count: number;
+  total_tokens: number;
+  // 0 (not null) for a run that recorded no calls.
+  cost_usd: number | null;
+  cost_source: AdminCostSource | null;
+}
+
+export interface RoutineCostReport {
+  routine_id: string;
+  routine_created_at: string | null;
+  generated_at: string;
+  // In display order: 7 days, then 28 days.
+  windows: RoutineCostWindow[];
+  // Every surviving run since the routine was created.
+  lifetime: RoutineCostBucket;
+  // Newest first, at most 10.
+  recent_runs: RoutineCostRun[];
+}
+
 export interface AdminGeminiModelUsage {
   model: string;
   provider: 'gemini';
