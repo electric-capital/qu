@@ -758,12 +758,12 @@ def main() -> None:
             (
                 f"quest-script-runner-{quest_env}",
                 "Dockerfile.script-runner",
-                ["script-runner-entry.sh"],
+                ["script-runner-entry.sh", "script-runner-soffice.sh"],
             ),
             (
                 f"quest-script-runner-public-{quest_env}",
                 "Dockerfile.script-runner-public",
-                ["script-runner-entry-public.sh"],
+                ["script-runner-entry-public.sh", "script-runner-soffice.sh"],
             ),
         ]
         for image_name, dockerfile, entry_sources in images:

@@ -447,6 +447,26 @@ fields. To *read* a PDF's content for analysis, prefer `get_workspace_file`
 manipulation/generation. If a PDF is over the per-model attachment limit,
 split it into page chunks with `pypdf` first and read the chunks.
 
+**Document conversion (`.docx` / `.doc` / `.odt` / `.rtf` / `.html` -> PDF,
+and between those formats):** headless LibreOffice Writer, Calc and Impress
+are installed in the sandbox, together with the Microsoft core fonts (Arial,
+Times New Roman, Courier New, Verdana, Georgia, Trebuchet MS, ...) and
+metric-compatible substitutes for Calibri / Cambria (Carlito / Caladea).
+**Use it for every document conversion** unless the user asks for a
+different route; never stitch a PDF together from `python-docx` output --
+that loses layout, fonts, images, headers/footers and tables. From
+`run_python` / `run_script`:
+`subprocess.run(["soffice", "--headless", "--convert-to", "pdf", "--outdir", "/workspace", "/workspace/report.docx"], check=True)`
+-- about a second per document; the result lands in `--outdir` as
+`report.pdf`. Any LibreOffice format works as source (`.docx`, `.doc`,
+`.odt`, `.rtf`, `.html`, `.txt`, `.xlsx`, `.pptx`, ...) or as target
+(`--convert-to docx`, `odt`, `xlsx`, `pptx`, `png` for a first-page
+preview, ...). For a document stored in Google Drive, `download_drive_file`
+it first, then convert. Native Google Docs / Sheets / Slides have no bytes
+to convert -- export Docs with `google_export_doc` instead. Do not pass
+`-env:UserInstallation` yourself; the `soffice` wrapper already provides a
+per-run profile.
+
 - **run_python(script, args?, timeout?)** — pass inline Python source as a
   string. Nothing is written to the workspace. Use this for one-off,
   throwaway tasks: analysing an uploaded file, quick data processing,
