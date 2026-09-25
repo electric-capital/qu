@@ -62,6 +62,11 @@ export const endpoints = {
   connectors: () => `${API_BASE_URL}/connectors`,
 
   /**
+   * Composer voice input: multipart audio clip -> transcript
+   */
+  transcribe: () => `${API_BASE_URL}/transcribe`,
+
+  /**
    * Inference API keys (Settings > Inference API)
    */
   inferenceApiKeys: () => `${API_BASE_URL}/inference-api-keys`,

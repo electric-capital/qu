@@ -6,7 +6,7 @@
  */
 
 import { endpoints, API_BASE_URL } from './config';
-import { apiGet, apiPost, apiPut, apiDelete } from './request';
+import { apiGet, apiPost, apiPut, apiDelete, handleErrorResponse } from './request';
 import type {
   ListConversationsResponse,
   CreateConversationResponse,
@@ -46,6 +46,7 @@ import type {
   FeatureGate,
   FeatureGatesListResponse,
   FeatureGateUpdate,
+  TranscribeResponse,
   PasswordLinkInfo,
   PasswordLinkResult,
   ServiceCredentialsListResponse,
@@ -719,6 +720,28 @@ export function updateFeatureGate(
   update: FeatureGateUpdate,
 ): Promise<FeatureGate> {
   return apiPut(endpoints.adminFeatureGate(feature), { body: update });
+}
+
+/**
+ * Composer voice input: upload one recorded clip (multipart ``audio``) and
+ * get its transcript back. The clip is transcribed server-side on the
+ * deployment's own Vertex project and never stored. Error codes:
+ * voice_input_disabled (403), unsupported_audio / audio_too_large /
+ * empty_audio (400), transcription_unavailable (503), transcription_failed
+ * (502).
+ */
+export async function transcribeAudio(clip: Blob, filename: string): Promise<TranscribeResponse> {
+  const formData = new FormData();
+  formData.append('audio', clip, filename);
+  const response = await fetch(endpoints.transcribe(), {
+    method: 'POST',
+    body: formData,
+    credentials: 'include',
+  });
+  if (!response.ok) {
+    await handleErrorResponse(response);
+  }
+  return (await response.json()) as TranscribeResponse;
 }
 
 export function fetchServiceCredentials(): Promise<ServiceCredentialsListResponse> {

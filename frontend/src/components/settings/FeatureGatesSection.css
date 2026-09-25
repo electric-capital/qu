@@ -54,9 +54,17 @@
   padding: 0.25rem 0;
 }
 
+/* Why a gate cannot be turned on yet (missing server configuration). */
+.feature-gate-unavailable {
+  font-size: 0.8125rem;
+  color: #fbbf24;
+  margin: 0 0 0.5rem;
+}
+
 /* Light mode: only the literal amber warning needs a darker variant. */
 @media (prefers-color-scheme: light) {
-  .feature-gate-empty-note {
+  .feature-gate-empty-note,
+  .feature-gate-unavailable {
     color: #b45309;
   }
 }

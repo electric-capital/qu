@@ -1096,6 +1096,17 @@ export interface FeatureGate {
   allowed_users: string[] | null;
   // Whether this gate can be narrowed to specific users (allowed_users).
   supports_user_access: boolean;
+  // False when the server lacks something the feature needs (e.g. voice
+  // input without a Gemini Vertex model); the gate cannot be turned on
+  // until it is fixed and unavailable_reason says what is missing.
+  available: boolean;
+  unavailable_reason: string | null;
+}
+
+// POST /transcribe response (composer voice input).
+export interface TranscribeResponse {
+  text: string;
+  model: string;
 }
 
 // PUT /admin/feature-gates/{feature} body. Omit allowed_users to keep the

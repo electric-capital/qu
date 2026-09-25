@@ -33,11 +33,15 @@
  */
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { ArrowUp, Flag, Globe, Paperclip, Sparkles, Square } from 'lucide-react';
+import { ArrowUp, Flag, Globe, LoaderCircle, Mic, Paperclip, Sparkles, Square } from 'lucide-react';
 import { useConversationContext } from '../contexts/ConversationContext';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { isVoiceInputSupported, useVoiceRecorder } from '../hooks/useVoiceRecorder';
+import type { VoiceRecording } from '../hooks/useVoiceRecorder';
 import type { ComposerAttachmentRef } from '../api/types';
 import { uploadComposerAttachments } from '../api/fileApi';
+import { transcribeAudio } from '../api/client';
+import { ApiClientError } from '../api/request';
 import { extractFilesFromDataTransfer } from '../utils/directoryTraversal';
 import {
   getKnownModels, getSelectableModels, getProviderForModel, getModelDisplayName, getModelInfo,
@@ -226,6 +230,13 @@ export interface ComposerProps {
 /**
  * The shared composer. See module docstring.
  */
+/** mm:ss for the recording timer beside the mic button. */
+function formatRecordingTime(totalSeconds: number): string {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+}
+
 export function Composer({
   conversationId,
   onSend,
@@ -257,6 +268,9 @@ export function Composer({
   const [pendingFiles, setPendingFiles] = useState<QueuedFile[]>([]);
   const [pasteNotice, setPasteNotice] = useState<string | null>(null);
   const [isUploadingAttachments, setIsUploadingAttachments] = useState(false);
+  // Voice input: true from the moment a recording finishes until the
+  // transcript request resolves (the mic button shows a spinner meanwhile).
+  const [isTranscribing, setIsTranscribing] = useState(false);
   const [isSkillModalOpen, setIsSkillModalOpen] = useState(false);
   const [isSystemPromptModalOpen, setIsSystemPromptModalOpen] = useState(false);
   // Per-conversation flags selected via the composer Flags popover. Only
@@ -343,6 +357,93 @@ export function Composer({
     composerPlaceholder = isMobile
       ? "Message"
       : "Type a message... (Enter to send, Shift+Enter for newline)";
+  }
+
+  // ----------------------------------------------------------------
+  // Voice input (microphone -> server-side transcription)
+  // ----------------------------------------------------------------
+
+  // Re-run the textarea auto-resize after a programmatic value change
+  // (handleInputChange only runs for user typing).
+  const resizeInput = useCallback(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, isMobile ? 160 : 200)}px`;
+  }, [isMobile]);
+
+  const handleRecordingComplete = useCallback(async (recording: VoiceRecording) => {
+    setIsTranscribing(true);
+    try {
+      const result = await transcribeAudio(recording.blob, recording.filename);
+      const text = result.text.trim();
+      if (!text) {
+        setPasteNotice('No speech was detected in the recording.');
+        return;
+      }
+      // Append to whatever is already drafted, separated by a space, so a
+      // second clip continues the first instead of replacing it.
+      setInputValue((prev) => {
+        const base = prev.replace(/\s+$/, '');
+        return base ? `${base} ${text}` : text;
+      });
+      requestAnimationFrame(() => {
+        resizeInput();
+        // Desktop only: focusing on a phone pops the keyboard.
+        if (!isMobile) inputRef.current?.focus();
+      });
+    } catch (error) {
+      console.error('Transcription failed:', error);
+      const code = error instanceof ApiClientError ? error.errorCode : undefined;
+      setPasteNotice(
+        code === 'voice_input_disabled'
+          ? 'Voice input has been turned off by an administrator.'
+          : code === 'transcription_unavailable'
+            ? 'Voice input is not available right now (no transcription model is configured).'
+            : `Could not transcribe the recording${error instanceof Error && error.message ? `: ${error.message}` : '.'}`,
+      );
+    } finally {
+      setIsTranscribing(false);
+    }
+  }, [isMobile, resizeInput]);
+
+  const {
+    status: recorderStatus,
+    elapsedSeconds: recordingSeconds,
+    start: startRecording,
+    stop: stopRecording,
+    cancel: cancelRecording,
+  } = useVoiceRecorder({
+    onRecordingComplete: handleRecordingComplete,
+    onError: setPasteNotice,
+  });
+  const isRecording = recorderStatus !== 'idle';
+
+  // The button appears only when an admin has enabled the feature for this
+  // user AND the browser can capture audio here (secure context + MediaRecorder).
+  const voiceInputEnabled = enabledFeatures.includes('voice_input') && isVoiceInputSupported();
+
+  const handleMicClick = useCallback(() => {
+    if (recorderStatus === 'recording') {
+      stopRecording();
+    } else if (recorderStatus === 'idle') {
+      void startRecording();
+    }
+  }, [recorderStatus, startRecording, stopRecording]);
+
+  // Drop an in-progress recording when the composer locks or the
+  // conversation switches: the clip belonged to the previous context.
+  useEffect(() => {
+    if (inputDisabled) cancelRecording();
+  }, [inputDisabled, cancelRecording]);
+  useEffect(() => {
+    cancelRecording();
+  }, [conversationId, cancelRecording]);
+
+  if (recorderStatus === 'recording') {
+    composerPlaceholder = 'Listening… click the microphone again to stop.';
+  } else if (isTranscribing) {
+    composerPlaceholder = 'Transcribing…';
   }
 
   // Auto-focus the textarea when streaming ends (so the user can type
@@ -774,7 +875,9 @@ export function Composer({
     || pendingAttachments.length > 0
     || pendingFiles.length > 0
     || queuedSkills.length > 0
-    || selectedFlags.length > 0;
+    || selectedFlags.length > 0
+    || isRecording
+    || isTranscribing;
   const expanded = isMobile
     ? (!isReadOnly && (isFocusWithin || hasDraftState))
     : true;
@@ -800,6 +903,8 @@ export function Composer({
     (!inputValue.trim() && pendingAttachments.length === 0)
     || inputDisabled
     || isUploadingAttachments
+    || isRecording
+    || isTranscribing
     || noModelsAvailable
     || selectedModelDisallowed;
 
@@ -1006,6 +1111,41 @@ export function Composer({
           <span className="composer-badge">{pendingFiles.length}</span>
         )}
       </button>
+      {voiceInputEnabled && (
+        <>
+          <button
+            type="button"
+            className={
+              'composer-icon-btn composer-mic'
+              + (recorderStatus === 'recording' ? ' recording' : '')
+            }
+            onClick={handleMicClick}
+            disabled={inputDisabled || isTranscribing || recorderStatus === 'starting'}
+            aria-pressed={recorderStatus === 'recording'}
+            title={
+              isTranscribing
+                ? 'Transcribing…'
+                : recorderStatus === 'recording'
+                  ? 'Stop recording'
+                  : 'Dictate a message (transcribed on this server)'
+            }
+            aria-label={recorderStatus === 'recording' ? 'Stop recording' : 'Dictate a message'}
+          >
+            {isTranscribing ? (
+              <LoaderCircle size={18} className="composer-mic-spinner" />
+            ) : recorderStatus === 'recording' ? (
+              <Square size={14} fill="currentColor" />
+            ) : (
+              <Mic size={18} />
+            )}
+          </button>
+          {recorderStatus === 'recording' && (
+            <span className="composer-mic-timer" aria-live="polite">
+              {formatRecordingTime(recordingSeconds)}
+            </span>
+          )}
+        </>
+      )}
       {!isPublicProject && (
         <button
           type="button"

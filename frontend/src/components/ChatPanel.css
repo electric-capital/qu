@@ -949,6 +949,56 @@
   pointer-events: none;
 }
 
+/* Voice input: the mic button turns solid red while recording (same red as
+   the Stop button) with a soft pulsing ring; a spinner replaces the icon
+   while the clip is being transcribed. */
+.composer-icon-btn.composer-mic.recording {
+  color: #fff;
+  background-color: #ff6b6b;
+  animation: composerMicPulse 1.6s ease-out infinite;
+}
+
+.composer-icon-btn.composer-mic.recording:hover:not(:disabled) {
+  color: #fff;
+  background-color: #ff5252;
+}
+
+@keyframes composerMicPulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 107, 107, 0.55);
+  }
+  70% {
+    box-shadow: 0 0 0 8px rgba(255, 107, 107, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 107, 107, 0);
+  }
+}
+
+.composer-mic-spinner {
+  animation: composerMicSpin 1s linear infinite;
+}
+
+@keyframes composerMicSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Elapsed time beside the mic while recording. */
+.composer-mic-timer {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.6);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .composer-icon-btn.composer-mic.recording {
+    animation: none;
+  }
+}
+
 /* Inline "no credentials" warning next to the model trigger. */
 .composer-no-models {
   font-size: 0.75rem;
@@ -1011,6 +1061,15 @@
 
   .composer-icon-btn:active:not(:disabled) {
     background-color: rgba(0, 0, 0, 0.09);
+  }
+
+  .composer-icon-btn.composer-mic.recording,
+  .composer-icon-btn.composer-mic.recording:hover:not(:disabled) {
+    color: #fff;
+  }
+
+  .composer-mic-timer {
+    color: rgba(0, 0, 0, 0.55);
   }
 
   .composer-no-models {
