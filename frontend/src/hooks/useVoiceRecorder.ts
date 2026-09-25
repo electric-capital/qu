@@ -34,6 +34,14 @@
  *   back to the browser's default; the server sniffs the container anyway.
  * - Recordings auto-stop at ``MAX_RECORDING_SECONDS`` (mirrored in
  *   chat/transcription.py) so a clip can never exceed the upload cap.
+ * - The microphone is opened by asking for the ``default`` device BY ID
+ *   (``openMicrophone``), never with a bare ``{audio: true}``. The bare
+ *   form makes Chrome on macOS wake every input device while it chooses
+ *   one: with an iPhone offered through Continuity Camera that connects
+ *   the phone (it chimes, and audio takes seconds to arrive) even though
+ *   the built-in microphone is what ends up used. An explicit device id
+ *   opens only that device. Browsers without a ``default`` alias
+ *   (Firefox, Safari) reject the constraint and get the bare form.
  * - Tracks are stopped as soon as the recording ends so the browser's
  *   "microphone in use" indicator goes away immediately.
  * - ``stop()`` during ``starting`` is honoured: before the recorder exists
@@ -110,6 +118,21 @@ function describeCaptureError(error: unknown): string {
     return 'The microphone is in use by another application.';
   }
   return 'Could not start recording.';
+}
+
+/**
+ * Open the microphone: the ``default`` device by id first (see module
+ * docstring for why), falling back to a bare request where that id does
+ * not exist. Permission errors propagate from the first attempt.
+ */
+async function openMicrophone(): Promise<MediaStream> {
+  try {
+    return await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: 'default' } } });
+  } catch (error) {
+    const name = error instanceof DOMException ? error.name : '';
+    if (name !== 'OverconstrainedError' && name !== 'NotFoundError') throw error;
+    return navigator.mediaDevices.getUserMedia({ audio: true });
+  }
 }
 
 /** Root-mean-square of a time-domain sample buffer. */
@@ -262,7 +285,7 @@ export function useVoiceRecorder({
     setStatus('starting');
     let stream: MediaStream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream = await openMicrophone();
     } catch (error) {
       startingRef.current = false;
       setStatus('idle');
