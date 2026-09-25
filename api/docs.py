@@ -111,7 +111,7 @@ tool_call(tool_name="google_export_doc", arguments={{"document_id": "DOCUMENT_ID
 ```
 
 - Prefer `md` or `txt` when YOU need to read the content -- they are the cheapest to load back into context. Use `pdf` / `docx` / `odt` / `rtf` / `epub` when the user wants a file to keep, share, or upload elsewhere (e.g. via `upload_to_drive`).
-- The tool only exports native Google Docs (`mimeType = application/vnd.google-apps.document`). Regular files (uploaded PDFs, Word files, ...) go through `download_drive_file`; Sheets and Slides are not supported by this tool.
+- The tool only exports native Google Docs (`mimeType = application/vnd.google-apps.document`). Regular files (uploaded PDFs, Word files, ...) go through `download_drive_file`; Sheets and Slides are not supported by this tool. A Word / ODT / RTF file the user wants as a PDF (or another format): download it with `download_drive_file`, then convert it with headless LibreOffice in the sandbox -- `soffice --headless --convert-to pdf --outdir /workspace <file>` via `run_python` (see `system:workspace`) -- never with a PDF built from `python-docx` output.
 - Google caps exports at 10 MB of exported content; very large documents may fail in heavy formats and need `txt` / `md`.
 - Do NOT call `/drive/v3/files/{{id}}/export` through `authed_get` -- the tool call path rejects it and points you back here.
 
