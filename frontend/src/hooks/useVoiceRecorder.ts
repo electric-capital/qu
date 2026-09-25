@@ -2,16 +2,33 @@
  * Microphone capture for the composer's voice input.
  *
  * Wraps ``getUserMedia`` + ``MediaRecorder`` into a tiny state machine
- * (idle -> recording -> idle) and hands the finished clip to the caller as
- * a Blob; the caller (Composer.tsx) uploads it to ``POST /transcribe`` and
- * drops the transcript into the textarea. The hook never touches the
- * network itself.
+ * (idle -> starting -> recording -> idle) and hands the finished clip to
+ * the caller as a Blob; the caller (Composer.tsx) uploads it to
+ * ``POST /transcribe`` and drops the transcript into the textarea. The
+ * hook never touches the network itself.
  *
  * Browser reality this accounts for:
  * - Capture needs a secure context (https or localhost); on a plain-http
  *   dev instance reached by IP, ``navigator.mediaDevices`` is undefined.
  *   ``isVoiceInputSupported()`` is the feature check the composer uses to
  *   hide the button entirely rather than show one that cannot work.
+ * - Opening the microphone is NOT instant. ``getUserMedia`` may take a
+ *   moment (permission prompt, device open), and even after it resolves
+ *   and ``MediaRecorder.start()`` returns, the OS audio stack can take one
+ *   to three more seconds before real samples arrive -- Bluetooth headsets
+ *   switch to their hands-free profile (the chime users hear), USB
+ *   interfaces wake up. Everything said before that point is silence in
+ *   the clip. So the hook stays in ``starting`` -- and the caller should
+ *   tell the user to wait -- until an ``AnalyserNode`` on the same stream
+ *   sees the first non-silent frame (a live microphone always has a noise
+ *   floor; a device that has not opened yet delivers exact zeros). A
+ *   hard-muted microphone would never produce signal, so ``starting``
+ *   gives up after ``LIVE_SIGNAL_TIMEOUT_MS`` and flips to ``recording``
+ *   anyway. The recorder itself runs from the moment it is created, so any
+ *   audio that arrives earlier than our detection is still in the clip.
+ * - While recording, ``inputLevel`` (0..1, quantised and throttled so it
+ *   costs at most a few re-renders a second) exposes the current input
+ *   loudness for a level meter: the user can see they are being heard.
  * - Chrome/Firefox/Edge record Opus-in-WebM; Safari records AAC-in-MP4.
  *   The first supported entry of ``PREFERRED_MIME_TYPES`` wins, falling
  *   back to the browser's default; the server sniffs the container anyway.
@@ -19,6 +36,9 @@
  *   chat/transcription.py) so a clip can never exceed the upload cap.
  * - Tracks are stopped as soon as the recording ends so the browser's
  *   "microphone in use" indicator goes away immediately.
+ * - ``stop()`` during ``starting`` is honoured: before the recorder exists
+ *   it aborts the start (no clip, no callback), afterwards it stops the
+ *   recorder normally and delivers whatever was captured.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -33,6 +53,18 @@ export interface VoiceRecording {
 }
 
 export const MAX_RECORDING_SECONDS = 120;
+
+/** How long ``starting`` waits for the first audible frame before giving up. */
+export const LIVE_SIGNAL_TIMEOUT_MS = 3000;
+
+// RMS above which a frame counts as "the microphone is delivering audio".
+// A live mic's noise floor is orders of magnitude above this; a device that
+// has not opened yet (or a suspended AudioContext) delivers exact zeros.
+const LIVE_SIGNAL_RMS = 1e-5;
+// RMS that maps to a full level meter; ordinary speech sits around 0.05-0.3.
+const FULL_SCALE_RMS = 0.25;
+const LEVEL_STEPS = 10;
+const LEVEL_UPDATE_INTERVAL_MS = 80;
 
 const PREFERRED_MIME_TYPES = [
   'audio/webm;codecs=opus',
@@ -80,6 +112,45 @@ function describeCaptureError(error: unknown): string {
   return 'Could not start recording.';
 }
 
+/** Root-mean-square of a time-domain sample buffer. */
+function rmsOf(samples: Float32Array): number {
+  let sum = 0;
+  for (let i = 0; i < samples.length; i++) sum += samples[i] * samples[i];
+  return Math.sqrt(sum / (samples.length || 1));
+}
+
+interface LevelMonitor {
+  context: AudioContext;
+  analyser: AnalyserNode;
+  buffer: Float32Array<ArrayBuffer>;
+}
+
+/**
+ * Attach an AnalyserNode to the stream so we can read input loudness.
+ * Returns null when Web Audio is unavailable or refuses to run (a context
+ * that stays suspended would only ever report zeros).
+ */
+async function createLevelMonitor(stream: MediaStream): Promise<LevelMonitor | null> {
+  if (typeof AudioContext === 'undefined') return null;
+  let context: AudioContext;
+  try {
+    context = new AudioContext();
+  } catch {
+    return null;
+  }
+  try {
+    if (context.state !== 'running') await context.resume();
+    if (context.state !== 'running') throw new Error('AudioContext not running');
+    const analyser = context.createAnalyser();
+    analyser.fftSize = 1024;
+    context.createMediaStreamSource(stream).connect(analyser);
+    return { context, analyser, buffer: new Float32Array(analyser.fftSize) };
+  } catch {
+    void context.close().catch(() => undefined);
+    return null;
+  }
+}
+
 interface UseVoiceRecorderOptions {
   /** Called with the finished clip after a manual stop or the auto-stop. */
   onRecordingComplete: (recording: VoiceRecording) => void;
@@ -95,15 +166,24 @@ export function useVoiceRecorder({
 }: UseVoiceRecorderOptions) {
   const [status, setStatus] = useState<VoiceRecorderStatus>('idle');
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [inputLevel, setInputLevel] = useState(0);
 
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const monitorRef = useRef<LevelMonitor | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const startedAtRef = useRef(0);
   const timerRef = useRef<number | null>(null);
   const maxTimerRef = useRef<number | null>(null);
+  const liveTimeoutRef = useRef<number | null>(null);
+  const levelFrameRef = useRef<number | null>(null);
   // True when stop() was reached via cancel(): the clip is discarded.
   const discardRef = useRef(false);
+  // Set by stop()/cancel() while getUserMedia is still pending: start()
+  // checks it once the stream arrives and aborts instead of recording.
+  const abortStartRef = useRef(false);
+  // True while start() is between the click and the recorder existing.
+  const startingRef = useRef(false);
   // Latest callbacks without re-creating the recorder handlers.
   const onCompleteRef = useRef(onRecordingComplete);
   const onErrorRef = useRef(onError);
@@ -119,9 +199,22 @@ export function useVoiceRecorder({
       window.clearTimeout(maxTimerRef.current);
       maxTimerRef.current = null;
     }
+    if (liveTimeoutRef.current !== null) {
+      window.clearTimeout(liveTimeoutRef.current);
+      liveTimeoutRef.current = null;
+    }
+    if (levelFrameRef.current !== null) {
+      window.cancelAnimationFrame(levelFrameRef.current);
+      levelFrameRef.current = null;
+    }
   }, []);
 
   const releaseStream = useCallback(() => {
+    const monitor = monitorRef.current;
+    monitorRef.current = null;
+    if (monitor) {
+      void monitor.context.close().catch(() => undefined);
+    }
     const stream = streamRef.current;
     streamRef.current = null;
     if (stream) {
@@ -129,11 +222,16 @@ export function useVoiceRecorder({
         try { track.stop(); } catch { /* ignore */ }
       }
     }
+    setInputLevel(0);
   }, []);
 
   const stop = useCallback(() => {
     const recorder = recorderRef.current;
-    if (!recorder) return;
+    if (!recorder) {
+      // Still waiting for getUserMedia: abort the start instead.
+      if (startingRef.current) abortStartRef.current = true;
+      return;
+    }
     clearTimers();
     if (recorder.state !== 'inactive') {
       try {
@@ -154,18 +252,29 @@ export function useVoiceRecorder({
   }, [stop]);
 
   const start = useCallback(async () => {
-    if (recorderRef.current || status !== 'idle') return;
+    if (recorderRef.current || startingRef.current || status !== 'idle') return;
     if (!isVoiceInputSupported()) {
       onErrorRef.current('Voice input is not available in this browser.');
       return;
     }
+    startingRef.current = true;
+    abortStartRef.current = false;
     setStatus('starting');
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch (error) {
+      startingRef.current = false;
       setStatus('idle');
-      onErrorRef.current(describeCaptureError(error));
+      if (!abortStartRef.current) onErrorRef.current(describeCaptureError(error));
+      return;
+    }
+    if (abortStartRef.current) {
+      // stop()/cancel() arrived while the permission prompt or device open
+      // was in flight: nothing was captured, nothing to deliver.
+      startingRef.current = false;
+      for (const track of stream.getTracks()) track.stop();
+      setStatus('idle');
       return;
     }
     let recorder: MediaRecorder;
@@ -173,6 +282,7 @@ export function useVoiceRecorder({
       const mimeType = pickMimeType();
       recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
     } catch (error) {
+      startingRef.current = false;
       for (const track of stream.getTracks()) track.stop();
       setStatus('idle');
       onErrorRef.current(describeCaptureError(error));
@@ -181,8 +291,29 @@ export function useVoiceRecorder({
 
     streamRef.current = stream;
     recorderRef.current = recorder;
+    startingRef.current = false;
     chunksRef.current = [];
     discardRef.current = false;
+    // Until the first audible frame, the clip's duration is counted from the
+    // moment the recorder started; markLive() re-bases it.
+    startedAtRef.current = Date.now();
+    let live = false;
+
+    const markLive = () => {
+      if (live) return;
+      live = true;
+      if (liveTimeoutRef.current !== null) {
+        window.clearTimeout(liveTimeoutRef.current);
+        liveTimeoutRef.current = null;
+      }
+      startedAtRef.current = Date.now();
+      setStatus('recording');
+      setElapsedSeconds(0);
+      timerRef.current = window.setInterval(() => {
+        setElapsedSeconds(Math.floor((Date.now() - startedAtRef.current) / 1000));
+      }, 500);
+      maxTimerRef.current = window.setTimeout(() => stop(), maxSeconds * 1000);
+    };
 
     recorder.ondataavailable = (event: BlobEvent) => {
       if (event.data && event.data.size > 0) chunksRef.current.push(event.data);
@@ -216,21 +347,51 @@ export function useVoiceRecorder({
       });
     };
 
-    startedAtRef.current = Date.now();
     // A timeslice keeps data flowing so a tab crash mid-recording loses at
     // most a second, and Safari needs one to emit any data before stop.
     recorder.start(1000);
-    setStatus('recording');
-    setElapsedSeconds(0);
-    timerRef.current = window.setInterval(() => {
-      setElapsedSeconds(Math.floor((Date.now() - startedAtRef.current) / 1000));
-    }, 500);
-    maxTimerRef.current = window.setTimeout(() => stop(), maxSeconds * 1000);
+    // stop() may have been called synchronously by a re-render between the
+    // await above and here (e.g. the composer locking); honour it.
+    if (recorderRef.current !== recorder) return;
+
+    // Watch the stream for the first real audio, then keep a level meter.
+    const monitor = await createLevelMonitor(stream);
+    if (recorderRef.current !== recorder) {
+      if (monitor) void monitor.context.close().catch(() => undefined);
+      return;
+    }
+    if (!monitor) {
+      // No Web Audio: nothing to gate on, trust the recorder.
+      markLive();
+      return;
+    }
+    monitorRef.current = monitor;
+    liveTimeoutRef.current = window.setTimeout(markLive, LIVE_SIGNAL_TIMEOUT_MS);
+    let lastLevelAt = 0;
+    let lastLevel = 0;
+    const tick = () => {
+      if (monitorRef.current !== monitor) return;
+      monitor.analyser.getFloatTimeDomainData(monitor.buffer);
+      const rms = rmsOf(monitor.buffer);
+      if (!live && rms > LIVE_SIGNAL_RMS) markLive();
+      const now = Date.now();
+      if (live && now - lastLevelAt >= LEVEL_UPDATE_INTERVAL_MS) {
+        lastLevelAt = now;
+        const level = Math.round(Math.min(1, rms / FULL_SCALE_RMS) * LEVEL_STEPS) / LEVEL_STEPS;
+        if (level !== lastLevel) {
+          lastLevel = level;
+          setInputLevel(level);
+        }
+      }
+      levelFrameRef.current = window.requestAnimationFrame(tick);
+    };
+    levelFrameRef.current = window.requestAnimationFrame(tick);
   }, [status, maxSeconds, stop, clearTimers, releaseStream]);
 
   // Never leave the microphone open after unmount.
   useEffect(() => () => {
     discardRef.current = true;
+    abortStartRef.current = true;
     const recorder = recorderRef.current;
     recorderRef.current = null;
     clearTimers();
@@ -240,5 +401,5 @@ export function useVoiceRecorder({
     releaseStream();
   }, [clearTimers, releaseStream]);
 
-  return { status, elapsedSeconds, start, stop, cancel };
+  return { status, elapsedSeconds, inputLevel, start, stop, cancel };
 }

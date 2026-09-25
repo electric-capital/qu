@@ -271,6 +271,19 @@ export function Composer({
   // Voice input: true from the moment a recording finishes until the
   // transcript request resolves (the mic button shows a spinner meanwhile).
   const [isTranscribing, setIsTranscribing] = useState(false);
+  // Voice input: armed when Send (button or Enter) is pressed mid-recording.
+  // The recording is stopped, transcribed, appended to the draft, and the
+  // draft is sent as soon as the transcript has landed (see the effect
+  // below handleSendMessage). Disarmed without sending when transcription
+  // fails or hears no speech, so the user can decide what to do. The ref
+  // is the source of truth (it is cleared from effects that cancel the
+  // recording); the state only drives the placeholder text.
+  const sendAfterTranscriptionRef = useRef(false);
+  const [sendAfterTranscription, setSendAfterTranscription] = useState(false);
+  const armSendAfterTranscription = useCallback((armed: boolean) => {
+    sendAfterTranscriptionRef.current = armed;
+    setSendAfterTranscription(armed);
+  }, []);
   const [isSkillModalOpen, setIsSkillModalOpen] = useState(false);
   const [isSystemPromptModalOpen, setIsSystemPromptModalOpen] = useState(false);
   // Per-conversation flags selected via the composer Flags popover. Only
@@ -378,6 +391,7 @@ export function Composer({
       const result = await transcribeAudio(recording.blob, recording.filename);
       const text = result.text.trim();
       if (!text) {
+        armSendAfterTranscription(false);
         setPasteNotice('No speech was detected in the recording.');
         return;
       }
@@ -393,6 +407,7 @@ export function Composer({
         if (!isMobile) inputRef.current?.focus();
       });
     } catch (error) {
+      armSendAfterTranscription(false);
       console.error('Transcription failed:', error);
       const code = error instanceof ApiClientError ? error.errorCode : undefined;
       setPasteNotice(
@@ -405,17 +420,23 @@ export function Composer({
     } finally {
       setIsTranscribing(false);
     }
-  }, [isMobile, resizeInput]);
+  }, [isMobile, resizeInput, armSendAfterTranscription]);
+
+  const handleRecordingError = useCallback((message: string) => {
+    armSendAfterTranscription(false);
+    setPasteNotice(message);
+  }, [armSendAfterTranscription]);
 
   const {
     status: recorderStatus,
     elapsedSeconds: recordingSeconds,
+    inputLevel: recordingLevel,
     start: startRecording,
     stop: stopRecording,
     cancel: cancelRecording,
   } = useVoiceRecorder({
     onRecordingComplete: handleRecordingComplete,
-    onError: setPasteNotice,
+    onError: handleRecordingError,
   });
   const isRecording = recorderStatus !== 'idle';
 
@@ -434,16 +455,22 @@ export function Composer({
   // Drop an in-progress recording when the composer locks or the
   // conversation switches: the clip belonged to the previous context.
   useEffect(() => {
-    if (inputDisabled) cancelRecording();
+    if (inputDisabled) {
+      sendAfterTranscriptionRef.current = false;
+      cancelRecording();
+    }
   }, [inputDisabled, cancelRecording]);
   useEffect(() => {
+    sendAfterTranscriptionRef.current = false;
     cancelRecording();
   }, [conversationId, cancelRecording]);
 
-  if (recorderStatus === 'recording') {
-    composerPlaceholder = 'Listening… click the microphone again to stop.';
+  if (recorderStatus === 'starting') {
+    composerPlaceholder = 'Starting the microphone… one moment before you speak.';
+  } else if (recorderStatus === 'recording') {
+    composerPlaceholder = 'Listening… click the microphone to stop, or Send to transcribe and send.';
   } else if (isTranscribing) {
-    composerPlaceholder = 'Transcribing…';
+    composerPlaceholder = sendAfterTranscription ? 'Transcribing, then sending…' : 'Transcribing…';
   }
 
   // Auto-focus the textarea when streaming ends (so the user can type
@@ -487,15 +514,26 @@ export function Composer({
 
   // Handle send message
   const handleSendMessage = useCallback(() => {
-    const trimmedInput = inputValue.trim();
-    const hasAttachments = pendingAttachments.length > 0;
     if (
-      (!trimmedInput && !hasAttachments)
-      || isStreaming
+      isStreaming
       || isUploadingAttachments
       || hasPendingWait
       || expensiveResumeBlocked
     ) return;
+
+    // Send pressed mid-dictation: stop the recording now and send once the
+    // transcript has been appended to the draft (effect below).
+    if (isRecording) {
+      armSendAfterTranscription(true);
+      stopRecording();
+      return;
+    }
+    if (isTranscribing) return;
+    if (sendAfterTranscriptionRef.current) armSendAfterTranscription(false);
+
+    const trimmedInput = inputValue.trim();
+    const hasAttachments = pendingAttachments.length > 0;
+    if (!trimmedInput && !hasAttachments) return;
 
     // Optimistically clear composer text immediately; attachments are kept
     // queued until the upload completes so we can re-surface them on error.
@@ -592,7 +630,16 @@ export function Composer({
       .finally(() => {
         setIsUploadingAttachments(false);
       });
-  }, [inputValue, pendingAttachments, pendingFiles, isStreaming, isUploadingAttachments, hasPendingWait, expensiveResumeBlocked, onSend, onAfterSend, selectedModel, skipSendLocks, deferImageUpload, conversationId, isProviderLocked, lockConversationProvider, queuedSkills, markSkillsAsLoaded, isFirstMessage, selectedFlags]);
+  }, [inputValue, pendingAttachments, pendingFiles, isStreaming, isUploadingAttachments, hasPendingWait, expensiveResumeBlocked, isRecording, isTranscribing, stopRecording, armSendAfterTranscription, onSend, onAfterSend, selectedModel, skipSendLocks, deferImageUpload, conversationId, isProviderLocked, lockConversationProvider, queuedSkills, markSkillsAsLoaded, isFirstMessage, selectedFlags]);
+
+  // Complete a Send that was pressed mid-dictation. Runs once the recorder
+  // is idle and the transcript request has resolved; by then the transcript
+  // is in inputValue (React batches the recorder's idle transition with the
+  // transcribing flag, so this never fires between the two).
+  useEffect(() => {
+    if (!sendAfterTranscriptionRef.current || isRecording || isTranscribing) return;
+    handleSendMessage();
+  }, [isRecording, isTranscribing, handleSendMessage]);
 
   // Handle keyboard input. On mobile, Enter inserts a newline (software
   // keyboards have no Shift+Enter; sending is the arrow button's job).
@@ -900,10 +947,9 @@ export function Composer({
     : credentialedModels;
 
   const sendDisabled =
-    (!inputValue.trim() && pendingAttachments.length === 0)
+    (!inputValue.trim() && pendingAttachments.length === 0 && !isRecording)
     || inputDisabled
     || isUploadingAttachments
-    || isRecording
     || isTranscribing
     || noModelsAvailable
     || selectedModelDisallowed;
@@ -1118,6 +1164,7 @@ export function Composer({
             className={
               'composer-icon-btn composer-mic'
               + (recorderStatus === 'recording' ? ' recording' : '')
+              + (recorderStatus === 'starting' ? ' starting' : '')
             }
             onClick={handleMicClick}
             disabled={inputDisabled || isTranscribing || recorderStatus === 'starting'}
@@ -1125,9 +1172,11 @@ export function Composer({
             title={
               isTranscribing
                 ? 'Transcribing…'
-                : recorderStatus === 'recording'
-                  ? 'Stop recording'
-                  : 'Dictate a message (transcribed on this server)'
+                : recorderStatus === 'starting'
+                  ? 'Starting the microphone…'
+                  : recorderStatus === 'recording'
+                    ? 'Stop recording'
+                    : 'Dictate a message (transcribed on this server)'
             }
             aria-label={recorderStatus === 'recording' ? 'Stop recording' : 'Dictate a message'}
           >
@@ -1140,9 +1189,18 @@ export function Composer({
             )}
           </button>
           {recorderStatus === 'recording' && (
-            <span className="composer-mic-timer" aria-live="polite">
-              {formatRecordingTime(recordingSeconds)}
-            </span>
+            <>
+              <span
+                className="composer-mic-level"
+                aria-hidden="true"
+                style={{ '--mic-level': recordingLevel } as React.CSSProperties}
+              >
+                <i /><i /><i /><i />
+              </span>
+              <span className="composer-mic-timer" aria-live="polite">
+                {formatRecordingTime(recordingSeconds)}
+              </span>
+            </>
           )}
         </>
       )}
@@ -1215,8 +1273,8 @@ export function Composer({
           className="composer-send"
           onClick={handleSendMessage}
           disabled={sendDisabled}
-          title={isUploadingAttachments ? 'Sending…' : 'Send'}
-          aria-label="Send"
+          title={isUploadingAttachments ? 'Sending…' : isRecording ? 'Stop recording and send' : 'Send'}
+          aria-label={isRecording ? 'Stop recording and send' : 'Send'}
         >
           <ArrowUp size={18} />
         </button>
