@@ -133,6 +133,9 @@ OpenRouter's catalog prices drift after the model's pricing snapshot is taken, s
 **Why does the user report scan chat_history.json files for active days?**
 User-message days are not derivable from the `llm_calls_*` tables (a call's `created_at` is a model-turn signal, not a user-message signal, and resumed turns blur it further). The report is fetch-on-demand and admin-only, and the scan prunes by each conversation row's `created_at`/`last_message_at` bounds before touching a file, so narrow ranges read few files.
 
+**Why do the report handlers build their rows in `asyncio.to_thread`?**
+Every chat_history.json read (active days on all three conversation/user reports, the legacy title fallback in `_resolve_list_title`) is a synchronous parse of a file that can run to many megabytes for a long tool-call conversation, and the user report reads one per non-routine conversation in range. Done on the event loop, that would freeze the persistent WebSocket for the duration: no heartbeats, no streaming events for every live run on the instance, and a stall past the socket's 60s deadlines closes the connection and drops the run's transient lifecycle envelopes (see [Realtime -- Run-State Reconcile on Subscribe](realtime.md#run-state-reconcile-on-subscribe)). The row-building loops therefore run in a worker thread; the async DB lookups they depend on are resolved on the loop first.
+
 **Why does the guides report ship content length instead of the guide text?**
 The report exists to find owners, not to read prompts: an admin needs "who still has non-empty guides, and are any still wired to routines" to reach out before deprecation. Shipping every user's system-prompt text to a dashboard would be a needless disclosure for that purpose, and the length alone separates the empty auto-created default rows from real ones.
 

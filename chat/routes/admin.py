@@ -1,5 +1,6 @@
 """Admin operation endpoints."""
 
+import asyncio
 import logging
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
@@ -213,13 +214,23 @@ async def admin_latest_active_conversations(
         conversation_ids
     )
 
-    conversations = []
-    for row in rows:
-        usage = usage_by_conversation.get(row["id"], _EMPTY_USAGE)
-        conversations.append(_admin_conversation_view(
-            row["id"], row, usage,
-            context_by_conversation.get(row["id"]),
-        ))
+    def _build_rows() -> list[dict]:
+        return [
+            _admin_conversation_view(
+                row["id"], row,
+                usage_by_conversation.get(row["id"], _EMPTY_USAGE),
+                context_by_conversation.get(row["id"]),
+            )
+            for row in rows
+        ]
+
+    # The per-row view reads each conversation's chat_history.json
+    # (active-day count, legacy title fallback): a synchronous parse of
+    # potentially large files that must not stall the event loop -- the
+    # persistent WebSocket's heartbeats and every in-flight model run
+    # share it, and a stall long enough to trip the socket watchdog drops
+    # live streams. Run the file-bound loop in a worker thread.
+    conversations = await asyncio.to_thread(_build_rows)
     return {"conversations": conversations}
 
 
@@ -376,22 +387,32 @@ async def admin_most_expensive_conversations(
     # user_id, so spend stays attributed. One lookup per distinct missing
     # owner (rare).
     fallback_users: dict[int, Optional[dict]] = {}
-    conversations = []
+    owner_by_conversation: dict[str, Optional[dict]] = {}
     for entry in ranked:
         conv_id = entry["conversation_id"]
-        row = rows_by_id.get(conv_id)
         owner = None
-        if row is None and entry["user_id"] is not None:
+        if rows_by_id.get(conv_id) is None and entry["user_id"] is not None:
             owner_id = entry["user_id"]
             if owner_id not in fallback_users:
                 fallback_users[owner_id] = await get_user_by_id(owner_id)
             owner = fallback_users[owner_id]
-        conversations.append(_admin_conversation_view(
-            conv_id, row,
-            {"models": entry["models"], "total": entry["total"]},
-            context_by_conversation.get(conv_id),
-            owner=owner,
-        ))
+        owner_by_conversation[conv_id] = owner
+
+    def _build_rows() -> list[dict]:
+        return [
+            _admin_conversation_view(
+                entry["conversation_id"],
+                rows_by_id.get(entry["conversation_id"]),
+                {"models": entry["models"], "total": entry["total"]},
+                context_by_conversation.get(entry["conversation_id"]),
+                owner=owner_by_conversation.get(entry["conversation_id"]),
+            )
+            for entry in ranked
+        ]
+
+    # Same chat_history.json reads as the latest-active endpoint: keep
+    # them off the event loop.
+    conversations = await asyncio.to_thread(_build_rows)
     return {"conversations": conversations}
 
 
@@ -489,18 +510,28 @@ async def admin_user_report(
     # cannot overlap the window.
     start_day = start_date.isoformat() if start_date else None
     end_day = end_date.isoformat() if end_date else None
-    active_days_by_user: dict[int, set] = {}
-    for row in conv_rows:
-        if row["routine_id"]:
-            continue
-        created, last = row["created_at"], row["last_message_at"]
-        if end_day and created is not None and created.date().isoformat() > end_day:
-            continue
-        if start_day and last is not None and last.date().isoformat() < start_day:
-            continue
-        days = ChatStorage.user_message_active_days(row["id"], start_day, end_day)
-        if days:
-            active_days_by_user.setdefault(row["user_id"], set()).update(days)
+
+    def _collect_active_days() -> dict[int, set]:
+        by_user: dict[int, set] = {}
+        for row in conv_rows:
+            if row["routine_id"]:
+                continue
+            created, last = row["created_at"], row["last_message_at"]
+            if end_day and created is not None and created.date().isoformat() > end_day:
+                continue
+            if start_day and last is not None and last.date().isoformat() < start_day:
+                continue
+            days = ChatStorage.user_message_active_days(row["id"], start_day, end_day)
+            if days:
+                by_user.setdefault(row["user_id"], set()).update(days)
+        return by_user
+
+    # This walks and parses chat_history.json for every non-routine
+    # conversation in range -- seconds to tens of seconds on a busy
+    # install. Done on the event loop it would freeze the persistent
+    # WebSocket (heartbeats, live streams) for the duration, so it runs
+    # in a worker thread.
+    active_days_by_user = await asyncio.to_thread(_collect_active_days)
 
     users_by_id = {u["id"]: u for u in await list_all_users()}
     # Call rows outlive user deletion; keep such spend visible on a

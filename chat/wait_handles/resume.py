@@ -53,6 +53,25 @@ def is_resuming(conversation_id: str) -> bool:
     return get_active_resume(conversation_id) is not None
 
 
+# Conversations whose resume task has passed the hold gates and published
+# ``resume_started`` -- i.e. is actually streaming. A held resume (sibling
+# cards still pending, or a stopped card) sits in ``_active_resumes`` for a
+# moment without ever emitting the paired lifecycle envelopes, so the WS
+# ``run_active`` report must not count it as live: a client that latched a
+# streaming state on it would wait for a ``send_message_finished`` that
+# never comes.
+_streaming_resumes: set[str] = set()
+
+
+def is_resume_streaming(conversation_id: str) -> bool:
+    """True while a resume run is streaming on this conversation (between
+    its ``resume_started`` and ``send_message_finished`` publishes)."""
+    return (
+        conversation_id in _streaming_resumes
+        and get_active_resume(conversation_id) is not None
+    )
+
+
 def _pending_tool_uses(conversation_id: str) -> list[tuple[str, str, dict]]:
     """Return the dangling ``(tool_id, name, args)`` tool_uses at the end of
     the conversation's ``sdk_history.json``.
@@ -279,6 +298,9 @@ async def _run_resume(
         )
         return
 
+    # Mark the run live BEFORE ``resume_started`` goes out so a subscribe
+    # ack computed after that publish reports ``run_active: true``.
+    _streaming_resumes.add(conversation_id)
     try:
         bus.publish_to_conversation(conversation_id, {
             "type": "resume_started",
@@ -508,6 +530,10 @@ async def _run_resume(
                 "[wait-resume] publish send_message_finished failed "
                 "(conversation=%s)", conversation_id, exc_info=True,
             )
+        # Same event-loop step as the publish above: nothing may await
+        # between the two, so a subscribe ack never sees a finished run
+        # as live (``is_resume_streaming``).
+        _streaming_resumes.discard(conversation_id)
 
 
 def _rekick_when_done(
