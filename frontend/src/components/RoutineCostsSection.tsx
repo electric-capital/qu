@@ -136,7 +136,10 @@ function WindowCard({ days, current, previous }: { days: number; current: Routin
 
 function RunRow({ run, onOpen }: { run: RoutineCostRun; onOpen?: (id: string) => void }) {
   const clickable = onOpen !== undefined;
-  const models = run.models.map(getModelDisplayName).join(', ');
+  // Primary (heaviest) model by name, further models as a "+N" marker; the
+  // full list lives in the cell tooltip. The column is narrow.
+  const modelNames = run.models.map(getModelDisplayName);
+  const extraModels = modelNames.length - 1;
   const cost = run.cost_usd === null ? null : formatCost(run.cost_usd, run.cost_source);
   return (
     <tr
@@ -148,7 +151,10 @@ function RunRow({ run, onOpen }: { run: RoutineCostRun; onOpen?: (id: string) =>
       title={clickable ? `Open "${run.title}"` : undefined}
     >
       <td className="routine-costs-col-start">{formatRunStart(run.started_at)}</td>
-      <td className="routine-costs-col-models" title={models}>{models || '—'}</td>
+      <td className="routine-costs-col-models" title={modelNames.join(', ')}>
+        {modelNames[0] ?? '—'}
+        {extraModels > 0 && <span className="routine-costs-more-models"> +{extraModels}</span>}
+      </td>
       <td className="routine-costs-col-num">{formatNumber(run.total_tokens)}</td>
       <td className="routine-costs-col-num">
         {cost === null ? (

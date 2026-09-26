@@ -107,13 +107,16 @@
 
 .routine-costs-table {
   width: 100%;
+  /* Fixed layout so the Model column truncates instead of pushing the
+     numeric columns out of the card. */
+  table-layout: fixed;
   border-collapse: collapse;
   font-size: 0.8125rem;
 }
 
 .routine-costs-table th,
 .routine-costs-table td {
-  padding: 0.5rem 0.75rem;
+  padding: 0.5rem 0.625rem;
   text-align: left;
   white-space: nowrap;
 }
@@ -136,10 +139,22 @@
   color: rgba(255, 255, 255, 0.85);
 }
 
+.routine-costs-col-start {
+  width: 7.75rem;
+}
+
 .routine-costs-col-models {
-  max-width: 220px;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.routine-costs-more-models {
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 0.75rem;
+}
+
+th.routine-costs-col-num {
+  width: 4.75rem;
 }
 
 .routine-costs-col-num {
@@ -216,7 +231,8 @@
     color: #2e8b4a;
   }
 
-  .routine-costs-unknown {
+  .routine-costs-unknown,
+  .routine-costs-more-models {
     color: rgba(0, 0, 0, 0.35);
   }
 

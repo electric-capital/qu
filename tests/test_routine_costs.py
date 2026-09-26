@@ -33,6 +33,11 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from chat.routine_costs import RECENT_RUNS_LIMIT, build_cost_report
 
 
+def _iso_z(dt):
+    """The endpoint's wire form: naive-UTC ISO with a ``Z`` suffix."""
+    return dt.replace(tzinfo=None).isoformat() + "Z"
+
+
 def _run(coro):
     return asyncio.run(coro)
 
@@ -73,7 +78,7 @@ def _usage(cost, source="estimated", model="claude-opus-4-8", tokens=1000, calls
     }
 
 
-ROUTINE = {"id": "r-1", "created_at": "2026-01-01T00:00:00+00:00"}
+ROUTINE = {"id": "r-1", "created_at": "2026-01-01T00:00:00"}
 
 
 # --------------------------------------------------------------------------
@@ -120,8 +125,8 @@ def test_windows_bucket_runs_by_start_time_with_previous_period():
     assert report["lifetime"]["call_count"] == 12
     assert report["lifetime"]["total_tokens"] == 6000
     assert report["routine_id"] == "r-1"
-    assert report["routine_created_at"] == "2026-01-01T00:00:00+00:00"
-    assert report["generated_at"] == NOW.isoformat()
+    assert report["routine_created_at"] == "2026-01-01T00:00:00"
+    assert report["generated_at"] == _iso_z(NOW)
 
 
 def test_window_boundaries_are_half_open_on_the_old_side():
@@ -197,7 +202,7 @@ def test_run_without_calls_costs_a_known_zero_and_falls_back_to_row_model():
     assert run["total_tokens"] == 0
     assert run["models"] == ["gemini-3.5-flash-lite"]
     assert run["title"] == "Daily digest"
-    assert run["started_at"] == (NOW - timedelta(days=1)).isoformat()
+    assert run["started_at"] == _iso_z(NOW - timedelta(days=1))
     # A known zero keeps the window priced (it is not an unpriced run).
     assert report["windows"][0]["current"]["cost_usd"] == 0.0
     assert report["windows"][0]["current"]["run_count"] == 1
@@ -244,6 +249,18 @@ def test_recent_run_lists_every_model_heaviest_first():
     assert run["cost_usd"] == 0.31
 
 
+def test_timestamps_serialize_with_z_suffix_not_offset():
+    # parseUTCTimestamp on the FE appends "Z" to anything not ending in one,
+    # so a "+00:00" offset would render as "Invalid Date".
+    rows = [_row("c-1", NOW - timedelta(days=1))]
+
+    report = build_cost_report(ROUTINE, rows, {"c-1": _usage(1.0)}, now=NOW)
+
+    for value in (report["generated_at"], report["recent_runs"][0]["started_at"]):
+        assert value.endswith("Z")
+        assert "+" not in value
+
+
 def test_naive_conversation_timestamps_are_treated_as_utc():
     # conversations.created_at is stored naive; the fold must not mix naive
     # and aware datetimes (TypeError) nor shift the instant.
@@ -252,7 +269,7 @@ def test_naive_conversation_timestamps_are_treated_as_utc():
     report = build_cost_report(ROUTINE, rows, {"c-naive": _usage(1.0)}, now=NOW)
 
     assert report["windows"][0]["current"]["run_count"] == 1
-    assert report["recent_runs"][0]["started_at"] == (NOW - timedelta(days=1)).isoformat()
+    assert report["recent_runs"][0]["started_at"] == _iso_z(NOW - timedelta(days=1))
 
 
 # --------------------------------------------------------------------------

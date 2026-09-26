@@ -75,6 +75,17 @@ def _as_utc(value: datetime) -> datetime:
     return value.astimezone(timezone.utc)
 
 
+def _iso_utc(value: datetime) -> str:
+    """Serialize as ``YYYY-MM-DDTHH:MM:SS[.ffffff]Z``.
+
+    The frontend's ``parseUTCTimestamp`` accepts naive strings and a ``Z``
+    suffix but NOT a ``+00:00`` offset (it appends ``Z`` to anything not
+    already ending in one), so an aware ``isoformat()`` would render as
+    "Invalid Date".
+    """
+    return _as_utc(value).replace(tzinfo=None).isoformat() + "Z"
+
+
 def _run_view(row: dict, usage: Optional[dict]) -> dict:
     """One row of the recent-runs table: identity + the run's usage total."""
     total = usage["total"] if usage else None
@@ -82,7 +93,7 @@ def _run_view(row: dict, usage: Optional[dict]) -> dict:
     return {
         "conversation_id": row["id"],
         "title": ChatStorage._resolve_list_title(row["id"], row),
-        "started_at": _as_utc(row["created_at"]).isoformat(),
+        "started_at": _iso_utc(row["created_at"]),
         # Every model that made a call during the run (sub-agents included),
         # heaviest first; the conversation's own model column as a fallback
         # for a run that recorded no calls (e.g. failed before the first).
@@ -154,12 +165,12 @@ def build_cost_report(
 
     routine_created = routine.get("created_at")
     if isinstance(routine_created, datetime):
-        routine_created = _as_utc(routine_created).isoformat()
+        routine_created = _iso_utc(routine_created)
 
     return {
         "routine_id": routine["id"],
         "routine_created_at": routine_created,
-        "generated_at": now.isoformat(),
+        "generated_at": _iso_utc(now),
         "windows": windows,
         "lifetime": _finish_bucket(lifetime),
         "recent_runs": runs[:RECENT_RUNS_LIMIT],
