@@ -12,7 +12,7 @@ db/guide_store.py: each function opens a fresh AsyncSessionLocal() session.
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import Select, and_, or_, select
 
 from db.engine import AsyncSessionLocal
 from db.models import Conversation, User
@@ -482,6 +482,57 @@ async def get_conversations_with_users(
             conv.id: _admin_conversation_row(conv, email, name)
             for conv, email, name in result.all()
         }
+
+
+def routine_conversation_ids_query(routine_id: str) -> Select:
+    """Single-column ``SELECT id`` of every conversation a routine created.
+
+    Built for ``IN (subquery)`` use by the raw-usage aggregation queries
+    (``get_usage_by_model_for_conversation_query``): a long-running hourly
+    routine owns thousands of conversations, so the id set stays inside
+    SQL instead of round-tripping as a bind-parameter list. Rows keep
+    their ``routine_id`` only while the routine exists (SET NULL on routine
+    delete) and disappear with the conversation itself, so a deleted run's
+    calls are no longer attributable to the routine.
+    """
+    return select(Conversation.id).where(Conversation.routine_id == routine_id)
+
+
+async def list_routine_conversation_rows(routine_id: str) -> list[dict]:
+    """Return every conversation a routine created, newest first.
+
+    Companion to ``routine_conversation_ids_query`` for the per-routine
+    cost report: a narrow projection (no users join -- the caller already
+    owns the routine) carrying the ``ChatStorage._resolve_list_title``
+    inputs, the run start (``created_at``) the report buckets costs by,
+    and ``model`` as the run's model proxy. Ordered by ``created_at DESC``
+    with ``id`` as the tiebreak so same-instant runs page stably.
+    """
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            select(
+                Conversation.id,
+                Conversation.created_at,
+                Conversation.custom_name,
+                Conversation.auto_title,
+                Conversation.last_message_seq,
+                Conversation.model,
+            )
+            .where(Conversation.routine_id == routine_id)
+            .order_by(Conversation.created_at.desc(), Conversation.id.desc())
+        )
+        return [
+            {
+                "id": conv_id,
+                "created_at": created_at,
+                "custom_name": custom_name,
+                "auto_title": auto_title,
+                "last_message_seq": last_message_seq or 0,
+                "model": model,
+            }
+            for conv_id, created_at, custom_name, auto_title, last_message_seq, model
+            in result.all()
+        ]
 
 
 async def list_conversation_activity_rows() -> list[dict]:

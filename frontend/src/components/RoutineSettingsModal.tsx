@@ -21,10 +21,11 @@ import type { Routine, Guide, RoutineSchedule, Skill } from '../api/types';
 import { useConversationContext } from '../contexts/ConversationContext';
 import { getSelectableModels, DEPRECATED_MODEL_MAP, getModelDisplayName } from '../constants/models';
 import { ModalShell } from './ModalShell';
+import { RoutineCostsSection } from './RoutineCostsSection';
 import './RoutineSettingsModal.css';
 import './settings/SkillsSection.css';
 
-type RoutineSettingsSection = 'prompt' | 'schedule' | 'skills' | 'delete';
+type RoutineSettingsSection = 'prompt' | 'schedule' | 'skills' | 'costs' | 'delete';
 type RoutineSkillsTab = 'my-skills' | 'shared-with-me';
 
 function renderRoutineSkillCard(
@@ -75,6 +76,8 @@ interface RoutineSettingsModalProps {
   onClose: () => void;
   onRoutineUpdated: () => void;
   onRoutineDeleted: () => void;
+  /** Open one of the runs listed in the Costs section (its conversation). */
+  onOpenRunConversation?: (conversationId: string) => void;
 }
 
 export function RoutineSettingsModal({
@@ -84,6 +87,7 @@ export function RoutineSettingsModal({
   onClose,
   onRoutineUpdated,
   onRoutineDeleted,
+  onOpenRunConversation,
 }: RoutineSettingsModalProps) {
   const { guides, enabledFeatures } = useConversationContext();
   // While the admin `guides` feature gate is closed the guide list is not
@@ -592,6 +596,12 @@ export function RoutineSettingsModal({
             >
               Skills
             </button>
+            <button
+              className={`routine-settings-nav-item ${activeSection === 'costs' ? 'active' : ''}`}
+              onClick={() => setActiveSection('costs')}
+            >
+              Costs
+            </button>
           </div>
           <div className="routine-settings-nav-bottom">
             <button
@@ -891,6 +901,13 @@ export function RoutineSettingsModal({
                 </>
               )}
             </div>
+          ) : activeSection === 'costs' ? (
+            <RoutineCostsSection
+              key={routine.id}
+              projectId={projectId}
+              routineId={routine.id}
+              onOpenRun={onOpenRunConversation}
+            />
           ) : activeSection === 'delete' ? (
             <>
               {/* Danger zone content */}

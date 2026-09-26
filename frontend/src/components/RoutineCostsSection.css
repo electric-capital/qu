@@ -1,0 +1,277 @@
+/* Routine Settings > Costs section. Dark defaults with light overrides at
+   the bottom, matching RoutineSettingsModal.css. */
+
+.routine-costs {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+/* Headline window cards (last 7 / 28 days) */
+.routine-costs-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.routine-costs-card {
+  padding: 0.875rem 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background-color: rgba(255, 255, 255, 0.04);
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.routine-costs-card-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.routine-costs-card-value {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.92);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.routine-costs-card-runs {
+  font-size: 0.8125rem;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.routine-costs-card-delta {
+  margin-top: 0.25rem;
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.routine-costs-card-delta-base {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+/* Spend going up is the thing to notice; down is good news. */
+.routine-costs-delta-up {
+  color: #e8a04b;
+}
+
+.routine-costs-delta-down {
+  color: #5cbf7a;
+}
+
+.routine-costs-unknown {
+  color: rgba(255, 255, 255, 0.35);
+  cursor: help;
+}
+
+/* Lifetime line */
+.routine-costs-lifetime {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  padding: 0.625rem 0.75rem;
+  border-radius: 8px;
+  background-color: rgba(255, 255, 255, 0.04);
+  font-size: 0.875rem;
+}
+
+.routine-costs-lifetime-label {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.routine-costs-lifetime-value {
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.92);
+  font-variant-numeric: tabular-nums;
+}
+
+.routine-costs-lifetime-detail {
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 0.8125rem;
+}
+
+/* Recent runs table */
+.routine-costs-table-wrap {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.routine-costs-table {
+  width: 100%;
+  /* Fixed layout so the Model column truncates instead of pushing the
+     numeric columns out of the card. */
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+}
+
+.routine-costs-table th,
+.routine-costs-table td {
+  padding: 0.5rem 0.625rem;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.routine-costs-table th {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: rgba(255, 255, 255, 0.5);
+  background-color: rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.routine-costs-table tbody tr + tr td {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.routine-costs-table td {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.routine-costs-col-start {
+  width: 7.75rem;
+}
+
+.routine-costs-col-models {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.routine-costs-more-models {
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 0.75rem;
+}
+
+th.routine-costs-col-num {
+  width: 4.75rem;
+}
+
+.routine-costs-col-num {
+  text-align: right !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.routine-costs-run-clickable {
+  cursor: pointer;
+}
+
+.routine-costs-run-clickable:hover td,
+.routine-costs-run-clickable:focus-visible td {
+  background-color: rgba(255, 255, 255, 0.06);
+}
+
+.routine-costs-run-clickable:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.routine-costs-empty {
+  padding: 0.75rem;
+  font-size: 0.875rem;
+  color: rgba(255, 255, 255, 0.5);
+  border: 1px dashed rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+}
+
+.routine-costs-footnote {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+@media (max-width: 520px) {
+  .routine-costs-cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (prefers-color-scheme: light) {
+  .routine-costs-card {
+    border-color: rgba(0, 0, 0, 0.12);
+    background-color: rgba(0, 0, 0, 0.03);
+  }
+
+  .routine-costs-card-label,
+  .routine-costs-table th {
+    color: rgba(0, 0, 0, 0.5);
+  }
+
+  .routine-costs-card-value,
+  .routine-costs-lifetime-value {
+    color: #1a1a1a;
+  }
+
+  .routine-costs-card-runs,
+  .routine-costs-card-delta,
+  .routine-costs-lifetime-label {
+    color: rgba(0, 0, 0, 0.6);
+  }
+
+  .routine-costs-card-delta-base {
+    color: rgba(0, 0, 0, 0.4);
+  }
+
+  .routine-costs-delta-up {
+    color: #b8690f;
+  }
+
+  .routine-costs-delta-down {
+    color: #2e8b4a;
+  }
+
+  .routine-costs-unknown,
+  .routine-costs-more-models {
+    color: rgba(0, 0, 0, 0.35);
+  }
+
+  .routine-costs-lifetime {
+    background-color: rgba(0, 0, 0, 0.03);
+  }
+
+  .routine-costs-lifetime-detail {
+    color: rgba(0, 0, 0, 0.45);
+  }
+
+  .routine-costs-table-wrap {
+    border-color: rgba(0, 0, 0, 0.12);
+  }
+
+  .routine-costs-table th {
+    background-color: rgba(0, 0, 0, 0.03);
+    border-bottom-color: rgba(0, 0, 0, 0.12);
+  }
+
+  .routine-costs-table tbody tr + tr td {
+    border-top-color: rgba(0, 0, 0, 0.08);
+  }
+
+  .routine-costs-table td {
+    color: #1a1a1a;
+  }
+
+  .routine-costs-run-clickable:hover td,
+  .routine-costs-run-clickable:focus-visible td {
+    background-color: rgba(0, 0, 0, 0.04);
+  }
+
+  .routine-costs-empty {
+    color: rgba(0, 0, 0, 0.5);
+    border-color: rgba(0, 0, 0, 0.15);
+  }
+
+  .routine-costs-footnote {
+    color: rgba(0, 0, 0, 0.45);
+  }
+}

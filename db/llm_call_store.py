@@ -19,7 +19,7 @@ import logging
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import case, func, literal, select
+from sqlalchemy import Select, case, func, literal, select
 
 from db.engine import AsyncSessionLocal
 from db.llm_pricing import LONG_CONTEXT_THRESHOLD, estimate_cost_usd
@@ -386,6 +386,23 @@ async def get_usage_by_model_for_conversations(
     return _group_buckets_by_conversation(by_key)
 
 
+async def get_usage_by_model_for_conversation_query(
+    conversation_id_select: Select,
+) -> dict[str, dict]:
+    """``get_usage_by_model_for_conversations`` over a conversation-id query.
+
+    Same per-conversation result shape, but the conversations are named by
+    a single-column ``SELECT`` (e.g. every conversation a routine created)
+    that runs as an ``IN (subquery)`` inside the grouped queries, so the
+    caller never materialises the id list. Conversations with no recorded
+    calls do not appear in the result.
+    """
+    by_key, _user_ids = await _collect_usage_buckets(
+        conversation_id_select=conversation_id_select
+    )
+    return _group_buckets_by_conversation(by_key)
+
+
 async def get_most_expensive_conversations(
     start: Optional[datetime] = None,
     end: Optional[datetime] = None,
@@ -528,9 +545,9 @@ async def get_usage_by_user(
         if cost is not None:
             entry["known_cost_usd"] += cost
         # A partial sum would read as the split's full cost, so an unpriced
-        # model nulls its split (_add_cost).
+        # model nulls its split (add_cost).
         if is_routine:
-            _add_cost(entry, "cost_routines_usd", "cost_routines_source", cost, source)
+            add_cost(entry, "cost_routines_usd", "cost_routines_source", cost, source)
             # Per-routine breakdown of the routine split: the same
             # null-on-unpriced convention, applied per routine, so one
             # unpriced model only hides its own routine's figure.
@@ -546,9 +563,9 @@ async def get_usage_by_user(
             routine_entry["conversations"].add(conv_id)
             if cost is not None:
                 routine_entry["known_cost_usd"] += cost
-            _add_cost(routine_entry, "cost_usd", "cost_source", cost, source)
+            add_cost(routine_entry, "cost_usd", "cost_source", cost, source)
         else:
-            _add_cost(
+            add_cost(
                 entry,
                 "cost_excluding_routines_usd",
                 "cost_excluding_routines_source",
@@ -571,12 +588,12 @@ async def get_usage_by_user(
             merged["total_tokens"] += model_entry["total_tokens"]
             for field, value in model_entry["metrics"].items():
                 merged["metrics"][field] += value
-            _add_cost(merged, "estimated_cost_usd", "cost_source", cost, source)
+            add_cost(merged, "estimated_cost_usd", "cost_source", cost, source)
 
         total = entry["total"]
         total["call_count"] += model_entry["call_count"]
         total["total_tokens"] += model_entry["total_tokens"]
-        _add_cost(total, "estimated_cost_usd", "cost_source", cost, source)
+        add_cost(total, "estimated_cost_usd", "cost_source", cost, source)
 
     result: dict[int, dict] = {}
     for user_id, entry in by_user.items():
@@ -777,7 +794,7 @@ COST_SOURCE_ESTIMATED = "estimated"
 COST_SOURCE_MIXED = "mixed"
 
 
-def _add_cost(
+def add_cost(
     target: dict,
     value_key: str,
     source_key: str,
@@ -808,16 +825,21 @@ def _add_cost(
 
 async def _collect_usage_buckets(
     conversation_ids: Optional[list[str]] = None,
+    conversation_id_select: Optional[Select] = None,
     start: Optional[datetime] = None,
     end: Optional[datetime] = None,
 ) -> tuple[dict[tuple[str, str], dict], dict[str, int]]:
     """Run the grouped per-provider queries and merge the tier buckets.
 
-    Shared core of the two aggregation entry points: filters by conversation
-    ids (batch endpoint) and/or a ``created_at`` window (cost analysis), one
-    grouped query per provider table either way. The query splits each
-    (conversation, model) into (at most) a normal- and a long-context bucket
-    so tier pricing is exact; the buckets merge back into one entry per key.
+    Shared core of the aggregation entry points: filters by conversation
+    ids (batch endpoint), by a single-column ``SELECT`` of conversation ids
+    (``conversation_id_select``, applied as an ``IN (subquery)`` so an
+    unbounded set -- e.g. every run of a routine -- never has to be
+    materialised into a bind-parameter list), and/or a ``created_at``
+    window (cost analysis), one grouped query per provider table either
+    way. The query splits each (conversation, model) into (at most) a
+    normal- and a long-context bucket so tier pricing is exact; the
+    buckets merge back into one entry per key.
 
     Returns:
         ``(by_key, user_ids)``: ``by_key`` maps (conversation_id, model) to a
@@ -871,6 +893,10 @@ async def _collect_usage_buckets(
             )
             if conversation_ids is not None:
                 stmt = stmt.where(row_cls.conversation_id.in_(conversation_ids))
+            if conversation_id_select is not None:
+                stmt = stmt.where(
+                    row_cls.conversation_id.in_(conversation_id_select)
+                )
             if start is not None:
                 stmt = stmt.where(row_cls.created_at >= start)
             if end is not None:
@@ -910,7 +936,7 @@ async def _collect_usage_buckets(
                 entry["total_tokens"] += total_tokens
                 for field in metric_fields:
                     entry["metrics"][field] += metrics[field]
-                _add_cost(entry, "estimated_cost_usd", "cost_source", cost, source)
+                add_cost(entry, "estimated_cost_usd", "cost_source", cost, source)
     return by_key, user_ids
 
 
@@ -943,8 +969,8 @@ def _group_buckets_by_conversation(
         total["call_count"] += model_entry["call_count"]
         total["total_tokens"] += model_entry["total_tokens"]
         # A partial sum would read as the whole conversation's cost, so an
-        # unpriced model nulls the total (_add_cost).
-        _add_cost(
+        # unpriced model nulls the total (add_cost).
+        add_cost(
             total,
             "estimated_cost_usd",
             "cost_source",

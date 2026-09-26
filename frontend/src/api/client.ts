@@ -31,6 +31,7 @@ import type {
   Project,
   ProjectsListResponse,
   Routine,
+  RoutineCostReport,
   RoutinesListResponse,
   RoutineSchedule,
   ActionRequest,
@@ -507,6 +508,17 @@ export function fetchProjectRoutines(projectId: string): Promise<RoutinesListRes
 
 export function fetchRoutine(projectId: string, routineId: string): Promise<Routine> {
   return apiGet(endpoints.projectRoutine(projectId, routineId));
+}
+
+/**
+ * Inference cost report for one routine (Routine Settings > Costs): rolling
+ * 7/28-day totals with the preceding period, lifetime total, recent runs.
+ */
+export function fetchRoutineCosts(
+  projectId: string,
+  routineId: string,
+): Promise<RoutineCostReport> {
+  return apiGet(endpoints.routineCosts(projectId, routineId));
 }
 
 export function createRoutine(
